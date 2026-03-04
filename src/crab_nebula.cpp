@@ -96,7 +96,7 @@ struct _pulsarDTC {
 // ============================================================
 // Parameter indices
 //
-// 38 parameters across 10 pages. Indices must match the order
+// 39 parameters across 10 pages. Indices must match the order
 // of entries in the parametersDefault[] array below.
 // ============================================================
 
@@ -138,18 +138,18 @@ enum {
 
 	// -- CV Inputs page 1 --
 	kParamPitchCV,      // Bus selector: 1V/oct pitch modulation (per-sample)
-	kParamFormantCV,    // Bus selector: bipolar formant Hz mod (±50% at ±5V)
-	kParamDutyCV,       // Bus selector: bipolar duty cycle offset (±20% at ±5V)
-	kParamMaskCV,       // Bus selector: unipolar mask amount (0–10V → 0–1)
+	kParamDutyCV,       // Bus selector: bipolar ±5V → ±20% duty offset
+	kParamMaskCV,       // Bus selector: bipolar ±5V → ±50% mask amount offset
 
 	// -- CV Inputs page 2 --
-	kParamPulsaretCV,   // Bus selector: bipolar pulsaret morph (±5V sweeps full range)
-	kParamWindowCV,     // Bus selector: bipolar window morph (±5V sweeps full range)
-	kParamGlideCV,      // Bus selector: unipolar glide time (0–10V → 0–2000ms)
-	kParamSampleRateCV, // Bus selector: bipolar sample rate offset (±5V → ±2x)
+	kParamPulsaretCV,   // Bus selector: bipolar ±5V → full range sweep
+	kParamWindowCV,     // Bus selector: bipolar ±5V → full range sweep
+	kParamAmplitudeCV,  // Bus selector: bipolar ±5V → ±50% amplitude offset
 
 	// -- CV Inputs page 3 --
-	kParamAmplitudeCV,  // Bus selector: unipolar amplitude (0–10V → 0–1)
+	kParamFormant1CV,   // Bus selector: bipolar ±5V → ±4000 Hz offset
+	kParamFormant2CV,   // Bus selector: bipolar ±5V → ±4000 Hz offset
+	kParamFormant3CV,   // Bus selector: bipolar ±5V → ±4000 Hz offset
 
 	// -- Routing page --
 	kParamMidiCh,       // 1–16: MIDI channel filter
@@ -179,15 +179,15 @@ static char const * const enumGateMode[] = { "MIDI", "Free Run" };
 
 static const _NT_parameter parametersDefault[] = {
 	// Synthesis page
-	{ .name = "Pulsaret",    .min = 0,   .max = 90,    .def = 0,   .unit = kNT_unitNone,    .scaling = kNT_scaling10, .enumStrings = NULL },
-	{ .name = "Window",      .min = 0,   .max = 40,    .def = 20,  .unit = kNT_unitNone,    .scaling = kNT_scaling10, .enumStrings = NULL },
+	{ .name = "Pulsaret",    .min = 0,   .max = 90,    .def = 25,  .unit = kNT_unitNone,    .scaling = kNT_scaling10, .enumStrings = NULL },
+	{ .name = "Window",      .min = 0,   .max = 40,    .def = 5,   .unit = kNT_unitNone,    .scaling = kNT_scaling10, .enumStrings = NULL },
 	{ .name = "Duty Cycle",  .min = 1,   .max = 100,   .def = 50,  .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
 	{ .name = "Duty Mode",   .min = 0,   .max = 1,     .def = 0,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumDutyMode },
 
 	// Formants page
-	{ .name = "Formant Count", .min = 1,  .max = 3,    .def = 1,   .unit = kNT_unitNone,    .scaling = kNT_scalingNone, .enumStrings = NULL },
-	{ .name = "Formant 1 Hz",  .min = 20, .max = 8000, .def = 440, .unit = kNT_unitHz,      .scaling = kNT_scalingNone, .enumStrings = NULL },
-	{ .name = "Formant 2 Hz",  .min = 20, .max = 8000, .def = 880, .unit = kNT_unitHz,      .scaling = kNT_scalingNone, .enumStrings = NULL },
+	{ .name = "Formant Count", .min = 1,  .max = 3,    .def = 2,   .unit = kNT_unitNone,    .scaling = kNT_scalingNone, .enumStrings = NULL },
+	{ .name = "Formant 1 Hz",  .min = 20, .max = 8000, .def = 215, .unit = kNT_unitHz,      .scaling = kNT_scalingNone, .enumStrings = NULL },
+	{ .name = "Formant 2 Hz",  .min = 20, .max = 8000, .def = 333, .unit = kNT_unitHz,      .scaling = kNT_scalingNone, .enumStrings = NULL },
 	{ .name = "Formant 3 Hz",  .min = 20, .max = 8000, .def = 1320,.unit = kNT_unitHz,      .scaling = kNT_scalingNone, .enumStrings = NULL },
 
 	// Masking page
@@ -199,7 +199,7 @@ static const _NT_parameter parametersDefault[] = {
 	// Envelope page
 	{ .name = "Attack",      .min = 1,   .max = 20000, .def = 100, .unit = kNT_unitMs,      .scaling = kNT_scaling10, .enumStrings = NULL },
 	{ .name = "Release",     .min = 10,  .max = 32000, .def = 2000,.unit = kNT_unitMs,      .scaling = kNT_scaling10, .enumStrings = NULL },
-	{ .name = "Amplitude",   .min = 0,   .max = 100,   .def = 80,  .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
+	{ .name = "Amplitude",   .min = 0,   .max = 100,   .def = 25,  .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
 	{ .name = "Glide",       .min = 0,   .max = 20000, .def = 0,   .unit = kNT_unitMs,      .scaling = kNT_scaling10, .enumStrings = NULL },
 
 	// Panning page
@@ -215,18 +215,18 @@ static const _NT_parameter parametersDefault[] = {
 
 	// CV Inputs page 1
 	NT_PARAMETER_CV_INPUT( "Pitch CV",       0, 1 )
-	NT_PARAMETER_CV_INPUT( "Formant CV",     0, 2 )
 	NT_PARAMETER_CV_INPUT( "Duty CV",        0, 3 )
 	NT_PARAMETER_CV_INPUT( "Mask CV",        0, 4 )
 
 	// CV Inputs page 2
 	NT_PARAMETER_CV_INPUT( "Pulsaret CV",    0, 5 )
 	NT_PARAMETER_CV_INPUT( "Window CV",      0, 6 )
-	NT_PARAMETER_CV_INPUT( "Glide CV",       0, 7 )
-	NT_PARAMETER_CV_INPUT( "Sample Rate CV", 0, 8 )
+	NT_PARAMETER_CV_INPUT( "Amplitude CV",   0, 7 )
 
 	// CV Inputs page 3
-	NT_PARAMETER_CV_INPUT( "Amplitude CV",   0, 0 )
+	NT_PARAMETER_CV_INPUT( "Formant 1 CV",   0, 8 )
+	NT_PARAMETER_CV_INPUT( "Formant 2 CV",   0, 9 )
+	NT_PARAMETER_CV_INPUT( "Formant 3 CV",   0, 9 )
 
 	// Routing page
 	{ .name = "MIDI Ch",     .min = 1,   .max = 16,    .def = 1,   .unit = kNT_unitNone,    .scaling = kNT_scalingNone, .enumStrings = NULL },
@@ -234,8 +234,8 @@ static const _NT_parameter parametersDefault[] = {
 	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Output R", 1, 14 )
 
 	// Gate mode (must be at end to match enum order)
-	{ .name = "Gate Mode",   .min = 0,   .max = 1,     .def = 0,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumGateMode },
-	{ .name = "Base Pitch",  .min = 0,   .max = 127,   .def = 69,  .unit = kNT_unitMIDINote, .scaling = kNT_scalingNone, .enumStrings = NULL },
+	{ .name = "Gate Mode",   .min = 0,   .max = 1,     .def = 1,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumGateMode },
+	{ .name = "Base Pitch",  .min = 0,   .max = 127,   .def = 24,  .unit = kNT_unitMIDINote, .scaling = kNT_scalingNone, .enumStrings = NULL },
 };
 
 // ============================================================
@@ -248,9 +248,9 @@ static const uint8_t pageMasking[]   = { kParamMaskMode, kParamMaskAmount, kPara
 static const uint8_t pageEnvelope[]  = { kParamAttack, kParamRelease, kParamAmplitude, kParamGlide };
 static const uint8_t pagePanning[]   = { kParamPan1, kParamPan2, kParamPan3 };
 static const uint8_t pageSample[]    = { kParamUseSample, kParamFolder, kParamFile, kParamSampleRate };
-static const uint8_t pageCV1[]       = { kParamPitchCV, kParamFormantCV, kParamDutyCV, kParamMaskCV };
-static const uint8_t pageCV2[]       = { kParamPulsaretCV, kParamWindowCV, kParamGlideCV, kParamSampleRateCV };
-static const uint8_t pageCV3[]       = { kParamAmplitudeCV };
+static const uint8_t pageCV1[]       = { kParamPitchCV, kParamDutyCV, kParamMaskCV };
+static const uint8_t pageCV2[]       = { kParamPulsaretCV, kParamWindowCV, kParamAmplitudeCV };
+static const uint8_t pageCV3[]       = { kParamFormant1CV, kParamFormant2CV, kParamFormant3CV };
 static const uint8_t pageRouting[]   = { kParamOutputL, kParamOutputLMode, kParamOutputR, kParamOutputRMode, kParamGateMode, kParamMidiCh, kParamBasePitch };
 
 static const _NT_parameterPage pages[] = {
@@ -311,6 +311,15 @@ struct _pulsarAlgorithm : public _NT_algorithm
 	int gateMode;                     // 0=MIDI, 1=Free Run
 	float basePitchHz;                // Hz from Base Pitch param
 	float peakLevel;                  // Peak |output| over last block (for display)
+
+	// Display state (written by step at block rate, read by draw)
+	// Volatile: step() and draw() may run in different interrupt contexts
+	volatile float displayPulsaretIdx;         // Effective pulsaret index after CV
+	volatile float displayWindowIdx;           // Effective window index after CV
+	volatile float displayDuty;                // Effective duty cycle after CV (manual mode)
+	volatile float displayFormantHz[3];        // Effective formant Hz after per-formant CV
+	volatile float displayAmplitude;           // Effective amplitude after CV
+	volatile float displayMask;                // Effective mask amount after CV
 
 	// Async SD card sample loading state
 	_NT_wavRequest wavRequest;        // Persistent request struct for NT_readSampleFrames()
@@ -510,13 +519,13 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 	}
 
 	// Initialize algorithm cached values (placement new does NOT zero members)
-	alg->pulsaretIndex = 0.0f;
-	alg->windowIndex = 2.0f;
+	alg->pulsaretIndex = 2.5f;
+	alg->windowIndex = 0.5f;
 	alg->dutyCycle = 0.5f;
 	alg->dutyMode = 0;
-	alg->formantCount = 1;
-	alg->formantHz[0] = 440.0f;
-	alg->formantHz[1] = 880.0f;
+	alg->formantCount = 2;
+	alg->formantHz[0] = 215.0f;
+	alg->formantHz[1] = 333.0f;
 	alg->formantHz[2] = 1320.0f;
 	alg->maskMode = 0;
 	alg->maskAmount = 0.5f;
@@ -524,16 +533,24 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 	alg->burstOff = 4;
 	alg->attackMs = 10.0f;
 	alg->releaseMs = 200.0f;
-	alg->amplitude = 0.8f;
+	alg->amplitude = 0.25f;
 	alg->glideMs = 0.0f;
 	alg->pan[0] = 0.0f;
 	alg->pan[1] = -0.5f;
 	alg->pan[2] = 0.5f;
 	alg->useSample = 0;
 	alg->sampleRateRatio = 1.0f;
-	alg->gateMode = 0;
-	alg->basePitchHz = 440.0f;
+	alg->gateMode = 1;
+	alg->basePitchHz = 440.0f * exp2f((24 - 69) / 12.0f);
 	alg->peakLevel = 0.0f;
+	alg->displayPulsaretIdx = 2.5f;
+	alg->displayWindowIdx = 0.5f;
+	alg->displayDuty = 0.5f;
+	alg->displayFormantHz[0] = 215.0f;
+	alg->displayFormantHz[1] = 333.0f;
+	alg->displayFormantHz[2] = 1320.0f;
+	alg->displayAmplitude = 0.25f;
+	alg->displayMask = 0.5f;
 	alg->cardMounted = false;
 	alg->awaitingCallback = false;
 	alg->sampleLoadedFrames = 0;
@@ -954,18 +971,16 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 
 	// CV input bus pointers
 	float* cvPitch = NULL;
-	float* cvFormant = NULL;
 	float* cvDuty = NULL;
 	float* cvMask = NULL;
 	float* cvPulsaret = NULL;
 	float* cvWindow = NULL;
-	float* cvGlide = NULL;
-	float* cvSampleRate = NULL;
 	float* cvAmplitude = NULL;
+	float* cvFormant1 = NULL;
+	float* cvFormant2 = NULL;
+	float* cvFormant3 = NULL;
 	if (pThis->v[kParamPitchCV] > 0)
 		cvPitch = busFrames + (pThis->v[kParamPitchCV] - 1) * numFrames;
-	if (pThis->v[kParamFormantCV] > 0)
-		cvFormant = busFrames + (pThis->v[kParamFormantCV] - 1) * numFrames;
 	if (pThis->v[kParamDutyCV] > 0)
 		cvDuty = busFrames + (pThis->v[kParamDutyCV] - 1) * numFrames;
 	if (pThis->v[kParamMaskCV] > 0)
@@ -974,12 +989,14 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		cvPulsaret = busFrames + (pThis->v[kParamPulsaretCV] - 1) * numFrames;
 	if (pThis->v[kParamWindowCV] > 0)
 		cvWindow = busFrames + (pThis->v[kParamWindowCV] - 1) * numFrames;
-	if (pThis->v[kParamGlideCV] > 0)
-		cvGlide = busFrames + (pThis->v[kParamGlideCV] - 1) * numFrames;
-	if (pThis->v[kParamSampleRateCV] > 0)
-		cvSampleRate = busFrames + (pThis->v[kParamSampleRateCV] - 1) * numFrames;
 	if (pThis->v[kParamAmplitudeCV] > 0)
 		cvAmplitude = busFrames + (pThis->v[kParamAmplitudeCV] - 1) * numFrames;
+	if (pThis->v[kParamFormant1CV] > 0)
+		cvFormant1 = busFrames + (pThis->v[kParamFormant1CV] - 1) * numFrames;
+	if (pThis->v[kParamFormant2CV] > 0)
+		cvFormant2 = busFrames + (pThis->v[kParamFormant2CV] - 1) * numFrames;
+	if (pThis->v[kParamFormant3CV] > 0)
+		cvFormant3 = busFrames + (pThis->v[kParamFormant3CV] - 1) * numFrames;
 
 	// SD card mount detection
 	bool cardMounted = NT_isSdCardMounted();
@@ -1010,78 +1027,84 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	float sampleRateRatio = pThis->sampleRateRatio;
 
 	// Read per-block CV averages (single combined loop)
-	float cvFormantAvg = 0.0f;
 	float cvDutyAvg = 0.0f;
 	float cvMaskAvg = 0.0f;
 	float cvPulsaretAvg = 0.0f;
 	float cvWindowAvg = 0.0f;
-	float cvGlideAvg = 0.0f;
-	float cvSampleRateAvg = 0.0f;
 	float cvAmplitudeAvg = 0.0f;
+	float cvFormant1Avg = 0.0f;
+	float cvFormant2Avg = 0.0f;
+	float cvFormant3Avg = 0.0f;
 	{
 		for (int i = 0; i < numFrames; ++i)
 		{
-			if (cvFormant) cvFormantAvg += cvFormant[i];
 			if (cvDuty) cvDutyAvg += cvDuty[i];
 			if (cvMask) cvMaskAvg += cvMask[i];
 			if (cvPulsaret) cvPulsaretAvg += cvPulsaret[i];
 			if (cvWindow) cvWindowAvg += cvWindow[i];
-			if (cvGlide) cvGlideAvg += cvGlide[i];
-			if (cvSampleRate) cvSampleRateAvg += cvSampleRate[i];
 			if (cvAmplitude) cvAmplitudeAvg += cvAmplitude[i];
+			if (cvFormant1) cvFormant1Avg += cvFormant1[i];
+			if (cvFormant2) cvFormant2Avg += cvFormant2[i];
+			if (cvFormant3) cvFormant3Avg += cvFormant3[i];
 		}
 		float invNumFrames = 1.0f / (float)numFrames;
-		if (cvFormant) cvFormantAvg *= invNumFrames;
 		if (cvDuty) cvDutyAvg *= invNumFrames;
 		if (cvMask) cvMaskAvg *= invNumFrames;
 		if (cvPulsaret) cvPulsaretAvg *= invNumFrames;
 		if (cvWindow) cvWindowAvg *= invNumFrames;
-		if (cvGlide) cvGlideAvg *= invNumFrames;
-		if (cvSampleRate) cvSampleRateAvg *= invNumFrames;
 		if (cvAmplitude) cvAmplitudeAvg *= invNumFrames;
+		if (cvFormant1) cvFormant1Avg *= invNumFrames;
+		if (cvFormant2) cvFormant2Avg *= invNumFrames;
+		if (cvFormant3) cvFormant3Avg *= invNumFrames;
 	}
 
-	// Formant CV: bipolar +-5V -> +-50% multiplier
-	float formantCvMul = 1.0f + cvFormantAvg * 0.1f;
-	// Duty CV: bipolar +-5V -> +-20% offset
+	// Duty CV: bipolar ±5V → ±20% offset
 	float dutyCvOffset = cvDutyAvg * 0.04f;
-	// Mask CV: unipolar 0-10V -> 0-1
-	float maskCvAmount = cvMaskAvg * 0.1f;
-	if (maskCvAmount < 0.0f) maskCvAmount = 0.0f;
-	if (maskCvAmount > 1.0f) maskCvAmount = 1.0f;
 
-	// Pulsaret CV: bipolar +-5V -> +-4.5 offset on index (full range sweep)
+	// Mask CV: bipolar ±5V → ±50% offset on mask amount
+	float effectiveMask = maskAmount + cvMaskAvg * 0.1f;
+	if (effectiveMask < 0.0f) effectiveMask = 0.0f;
+	if (effectiveMask > 1.0f) effectiveMask = 1.0f;
+
+	// Pulsaret CV: bipolar ±5V → ±4.5 offset on index (full range sweep)
 	pulsaretIdx += cvPulsaretAvg * 0.9f;
 	if (pulsaretIdx < 0.0f) pulsaretIdx = 0.0f;
 	if (pulsaretIdx > 9.0f) pulsaretIdx = 9.0f;
 
-	// Window CV: bipolar +-5V -> +-2.0 offset on index (full range sweep)
+	// Window CV: bipolar ±5V → ±2.0 offset on index (full range sweep)
 	windowIdx += cvWindowAvg * 0.4f;
 	if (windowIdx < 0.0f) windowIdx = 0.0f;
 	if (windowIdx > 4.0f) windowIdx = 4.0f;
 
-	// Glide CV: unipolar 0-10V -> 0-2000ms, overrides parameter
-	if (cvGlide)
-	{
-		float glideMs = cvGlideAvg * 200.0f; // 0-10V -> 0-2000ms
-		if (glideMs < 0.0f) glideMs = 0.0f;
-		if (glideMs > 2000.0f) glideMs = 2000.0f;
-		dtc->glideCoeff = coeffFromMs(glideMs, sr);
-	}
+	// Amplitude CV: bipolar ±5V → ±50% offset on amplitude
+	float effectiveAmplitude = amplitude + cvAmplitudeAvg * 0.1f;
+	if (effectiveAmplitude < 0.0f) effectiveAmplitude = 0.0f;
+	if (effectiveAmplitude > 1.0f) effectiveAmplitude = 1.0f;
 
-	// Sample Rate CV: bipolar +-5V -> +-2x multiplier on rate
-	sampleRateRatio += cvSampleRateAvg * 0.4f;
-	if (sampleRateRatio < 0.25f) sampleRateRatio = 0.25f;
-	if (sampleRateRatio > 4.0f) sampleRateRatio = 4.0f;
+	// Formant 1-3 CV: bipolar ±5V → ±4000 Hz offset, clamped to [20, 8000]
+	float modulatedFormantHz[3];
+	modulatedFormantHz[0] = pThis->formantHz[0] + cvFormant1Avg * 800.0f;
+	if (modulatedFormantHz[0] < 20.0f) modulatedFormantHz[0] = 20.0f;
+	if (modulatedFormantHz[0] > 8000.0f) modulatedFormantHz[0] = 8000.0f;
+	modulatedFormantHz[1] = pThis->formantHz[1] + cvFormant2Avg * 800.0f;
+	if (modulatedFormantHz[1] < 20.0f) modulatedFormantHz[1] = 20.0f;
+	if (modulatedFormantHz[1] > 8000.0f) modulatedFormantHz[1] = 8000.0f;
+	modulatedFormantHz[2] = pThis->formantHz[2] + cvFormant3Avg * 800.0f;
+	if (modulatedFormantHz[2] < 20.0f) modulatedFormantHz[2] = 20.0f;
+	if (modulatedFormantHz[2] > 8000.0f) modulatedFormantHz[2] = 8000.0f;
 
-	// Amplitude CV: unipolar 0-10V -> 0-1 multiplier
-	float ampCvMul = 1.0f;
-	if (cvAmplitude)
-	{
-		ampCvMul = cvAmplitudeAvg * 0.1f;
-		if (ampCvMul < 0.0f) ampCvMul = 0.0f;
-		if (ampCvMul > 1.0f) ampCvMul = 1.0f;
-	}
+	// Update display state for draw() — reflects CV modulation in realtime
+	pThis->displayPulsaretIdx = pulsaretIdx;
+	pThis->displayWindowIdx = windowIdx;
+	float effDuty = baseDuty + dutyCvOffset;
+	if (effDuty < 0.01f) effDuty = 0.01f;
+	if (effDuty > 1.0f) effDuty = 1.0f;
+	pThis->displayDuty = effDuty;
+	pThis->displayFormantHz[0] = modulatedFormantHz[0];
+	pThis->displayFormantHz[1] = modulatedFormantHz[1];
+	pThis->displayFormantHz[2] = modulatedFormantHz[2];
+	pThis->displayAmplitude = effectiveAmplitude;
+	pThis->displayMask = effectiveMask;
 
 	// Precompute per-formant pan gains
 	float panL[3], panR[3];
@@ -1100,9 +1123,7 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		if (dutyMode == 1 && dtc->fundamentalHz > 0.0f)
 		{
 			// Formant-derived duty: duty = fundamental / formant
-			float fHz = pThis->formantHz[f] * formantCvMul;
-			if (fHz < 20.0f) fHz = 20.0f;
-			formantDuty[f] = dtc->fundamentalHz / fHz;
+			formantDuty[f] = dtc->fundamentalHz / modulatedFormantHz[f];
 			if (formantDuty[f] > 1.0f) formantDuty[f] = 1.0f;
 		}
 		else
@@ -1128,7 +1149,7 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	{
 		float invFund = 1.0f / (dtc->fundamentalHz > 0.1f ? dtc->fundamentalHz : 0.1f);
 		for (int f = 0; f < formantCount; ++f)
-			formantRatioPrecomp[f] = pThis->formantHz[f] * formantCvMul * invFund;
+			formantRatioPrecomp[f] = modulatedFormantHz[f] * invFund;
 	}
 
 	// Mask smooth coefficient (sample-rate dependent, from DTC)
@@ -1170,11 +1191,9 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 			if (maskMode == 1)
 			{
 				// Stochastic: LCG PRNG vs threshold
-				float effectiveAmount = maskAmount;
-				if (cvMask) effectiveAmount = maskCvAmount;
 				dtc->prngState = dtc->prngState * 1664525u + 1013904223u;
 				float rnd = (float)(dtc->prngState >> 8) / 16777216.0f;
-				maskGain = (rnd < effectiveAmount) ? 0.0f : 1.0f;
+				maskGain = (rnd < effectiveMask) ? 0.0f : 1.0f;
 			}
 			else if (maskMode == 2)
 			{
@@ -1223,7 +1242,7 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 					// Table-based pulsaret with morphing
 					float formantRatio;
 					if (hasPitchCV)
-						formantRatio = pThis->formantHz[f] * formantCvMul / (dtc->fundamentalHz > 0.1f ? dtc->fundamentalHz : 0.1f);
+						formantRatio = modulatedFormantHz[f] / (dtc->fundamentalHz > 0.1f ? dtc->fundamentalHz : 0.1f);
 					else
 						formantRatio = formantRatioPrecomp[f];
 					float tablePhase = pulsaretPhase * formantRatio;
@@ -1251,7 +1270,7 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		dtc->envValue = dtc->envTarget + envCoeff * (dtc->envValue - dtc->envTarget);
 
 		float vel = dtc->velocity * (1.0f / 127.0f);
-		float gain = dtc->envValue * amplitude * vel * ampCvMul;
+		float gain = dtc->envValue * effectiveAmplitude * vel;
 		sumL *= gain;
 		sumR *= gain;
 
@@ -1312,10 +1331,9 @@ bool draw(_NT_algorithm* self)
 	int waveW = 100;
 	int waveH = 24;
 
-	float pulsaretIdx = pThis->pulsaretIndex;
-	float windowIdx = pThis->windowIndex;
-	float duty = pThis->dutyCycle;
-	if (duty < 0.01f) duty = 0.01f;
+	float pulsaretIdx = pThis->displayPulsaretIdx;
+	float windowIdx = pThis->displayWindowIdx;
+	float duty = pThis->displayDuty;
 
 	// Draw bounding box
 	NT_drawShapeI(kNT_box, waveX - 1, waveY - waveH / 2 - 1, waveX + waveW + 1, waveY + waveH / 2 + 1, 3);
@@ -1328,7 +1346,7 @@ bool draw(_NT_algorithm* self)
 		if (p < duty)
 		{
 			float pp = p / duty;
-			float formantRatio = pThis->formantHz[0] / (dtc->fundamentalHz > 0.1f ? dtc->fundamentalHz : 0.1f);
+			float formantRatio = pThis->displayFormantHz[0] / (dtc->fundamentalHz > 0.1f ? dtc->fundamentalHz : 0.1f);
 			float tp = pp * formantRatio;
 			tp -= (int)tp;
 			if (tp < 0.0f) tp += 1.0f;
@@ -1383,6 +1401,37 @@ bool draw(_NT_algorithm* self)
 	if (pkFillW > pkBarW) pkFillW = pkBarW;
 	if (pkFillW > 0)
 		NT_drawShapeI(kNT_rectangle, pkBarX, pkBarY, pkBarX + pkFillW, pkBarY + pkBarH, 15);
+
+	// Formant frequency readouts (show effective Hz after CV modulation)
+	{
+		int fmtY = pkBarY + pkBarH + 4;
+		int formantCount = pThis->formantCount;
+		char fbuf[16];
+		for (int f = 0; f < 3; ++f)
+		{
+			int brightness = (f < formantCount) ? 15 : 4;
+			int xPos = waveX + f * 56;
+
+			// Label: "F1" "F2" "F3"
+			char label[4];
+			label[0] = 'F';
+			label[1] = '1' + f;
+			label[2] = ':';
+			label[3] = 0;
+			NT_drawText(xPos, fmtY, label, brightness, kNT_textLeft, kNT_textTiny);
+
+			// Value
+			int fLen = NT_floatToString(fbuf, pThis->displayFormantHz[f], 0);
+			fbuf[fLen] = 0;
+			NT_drawText(xPos + 16, fmtY, fbuf, brightness, kNT_textLeft, kNT_textTiny);
+		}
+
+		// Amplitude readout (right side, below envelope bar)
+		int aLen = NT_floatToString(fbuf, pThis->displayAmplitude * 100.0f, 0);
+		fbuf[aLen] = '%';
+		fbuf[aLen + 1] = 0;
+		NT_drawText(barX, barY + barH + 4, fbuf, 10, kNT_textLeft, kNT_textTiny);
+	}
 
 	return false;
 }
