@@ -223,6 +223,86 @@ The custom display shows (256×64 px, standard parameter line at top):
 7. For MIDI control, switch **Gate Mode** to MIDI on the **Routing** page and set your MIDI channel
 8. Optionally load a WAV file from the SD card as a custom pulsaret waveform on the **Sample** page
 
+## Sound Design Tips
+
+### Formant Frequencies — the biggest tonal lever
+
+The formant frequencies have the most dramatic effect on timbre. They determine the spectral peaks of the sound, much like vowel formants in speech.
+
+- **Low formants (20–100 Hz)** produce deep, subharmonic rumbles. Set Formant 1 to 20 Hz for a thick bass drone.
+- **Vowel-like tones**: Try F1=270, F2=2300 for an "ah" sound, or F1=300, F2=870 for an "oo." Experiment with two or three formants tuned to vocal formant charts.
+- **Harmonic stacking**: Set formants to integer multiples of the fundamental (e.g., if Base Pitch gives you ~130 Hz, try formants at 130, 260, 390) for bright, reinforced harmonics.
+- **Inharmonic/metallic tones**: Set formants to non-integer ratios of each other (e.g., F1=200, F2=347, F3=511) for bell-like or metallic timbres.
+- **CV modulation of formants** creates the most expressive results — patch an LFO into Formant 1 CV to sweep a resonant peak through the spectrum in real time.
+
+### Pulsaret Waveform — harmonic character
+
+The pulsaret waveform sets the raw harmonic content inside each pulse.
+
+- **Sine (0.0)** is pure and clean — good starting point for isolating formant effects.
+- **Sine harmonics (1.0–2.0)** add upper partials without harshness.
+- **Sinc (3.0)** produces a band-limited impulse with natural sidelobes — characteristic pulsar synthesis sound. This is the closest to Roads' original work.
+- **Triangle/Saw (4.0–5.0)** bring familiar subtractive-style brightness.
+- **Square (6.0)** creates hollow, clarinet-like tones.
+- **Formant (7.0)** has a built-in resonant peak — stacking this with the formant frequency parameters creates double-resonance effects.
+- **Pulse (8.0)** is extremely bright and nasal.
+- **Noise (9.0)** replaces pitched content with noise bursts — useful for percussion or breathy textures.
+- **Morph between adjacent shapes** using fractional values (e.g., 3.5 blends sinc and triangle) for timbres that don't exist in any single waveform.
+
+### Duty Cycle — density and hollowness
+
+Duty cycle controls what fraction of each period contains sound.
+
+- **High duty (80–100%)** fills the period with sound, approaching classic wavetable synthesis. Rich and full.
+- **Medium duty (30–60%)** introduces silence gaps that create the characteristic pulsar "buzz." This is the sweet spot for most pulsar patches.
+- **Low duty (5–20%)** produces sparse, clicking, particle-like textures. Individual pulsarets become audible events.
+- **Formant Duty Mode** ties duty to the formant frequency automatically — as formant frequency rises, duty shrinks to keep the pulsaret waveform cycles consistent.
+
+### Window Function — attack shape of each pulse
+
+The window shapes how each pulsaret fades in and out.
+
+- **Rectangular (0.0)** gives hard edges — maximum brightness and click.
+- **Gaussian (1.0)** is smooth and gentle — the most natural-sounding window.
+- **Hann (2.0)** is similar to Gaussian but with a slightly flatter top — good general-purpose choice.
+- **Exponential decay (3.0)** creates plucked or percussive attacks that ring out.
+- **Linear decay (4.0)** is a simpler percussive shape.
+- Pair **exponential decay window + sinc pulsaret** for a classic plucked pulsar tone.
+
+### Masking — rhythm and texture
+
+Masking selectively mutes pulses to break up the continuous tone.
+
+- **Stochastic masking** at low amounts (10–30%) adds subtle grit and instability, like a rough surface on the sound. At high amounts (70–90%) the tone dissolves into a sparse cloud of particles.
+- **Burst masking** creates repeating rhythmic patterns at the micro-timescale. Try Burst On=1, Off=3 for a stuttering rhythm, or On=7, Off=1 for a subtle hiccup.
+- **CV-controlled mask amount** lets you crossfade between a solid tone and granular disintegration in real time.
+
+### Panning — stereo width
+
+With 2 or 3 formants active, spreading their pan positions creates wide stereo images.
+
+- **Pan 1=−100, Pan 2=0, Pan 3=+100** spreads formants hard left, center, and hard right for maximum width.
+- **Subtle spread (−30/0/+30)** keeps the sound centered but adds dimension.
+- **CV on Pan 1** with an LFO creates spatial movement.
+
+### Envelope — shaping the overall amplitude
+
+- **Short attack + short release (1–5 ms each)** in Free Run mode creates sharp, percussive clicks that retrigger on every pulse — excellent for rhythmic textures.
+- **Longer attack (50–200 ms)** softens each pulse onset for pad-like sounds.
+- **Long release (500–2000 ms)** in MIDI mode creates sustained, reverb-like tails after note-off.
+
+### Combination Recipes
+
+| Recipe | Pulsaret | Window | Duty | Formants | Masking | Character |
+|--------|----------|--------|------|----------|---------|-----------|
+| Classic pulsar | Sinc (3.0) | Gaussian (1.0) | 40% | F1=200 | Off | Clean buzzing tone |
+| Vocal drone | Sine (0.0) | Hann (2.0) | 60% | F1=270, F2=2300 | Off | "Ah" vowel sound |
+| Metallic bell | Formant (7.0) | Exp decay (3.0) | 30% | F1=200, F2=347, F3=511 | Off | Inharmonic ring |
+| Particle cloud | Noise (9.0) | Gaussian (1.0) | 10% | F1=800 | Stochastic 70% | Sparse noise bursts |
+| Rhythmic bass | Saw (5.0) | Rectangular (0.0) | 50% | F1=80 | Burst 3on/2off | Stuttering low tone |
+| Plucked string | Sinc (3.0) | Exp decay (3.0) | 45% | F1=400, F2=800 | Off | Percussive pluck |
+| Harsh industrial | Square (6.0) | Rectangular (0.0) | 25% | F1=150, F2=1500 | Stochastic 40% | Aggressive buzz |
+
 ## License
 
 Plugin source code is provided as-is. The disting NT API is copyright Expert Sleepers Ltd under the MIT License.
