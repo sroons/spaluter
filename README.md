@@ -1,4 +1,4 @@
-# Crab Nebula — Pulsar Synthesis for disting NT
+# Spaluter — Pulsar Synthesis for disting NT
 
 A [pulsar synthesis](https://en.wikipedia.org/wiki/Pulsar_synthesis) instrument plugin for the [Expert Sleepers disting NT](https://expert-sleepers.co.uk/distingNT.html) Eurorack module.
 
@@ -133,11 +133,11 @@ cd disting-pulsar
 make
 ```
 
-This produces `plugins/crab_nebula.o`.
+This produces `plugins/spaluter.o`.
 
 ### Install
 
-Copy `plugins/crab_nebula.o` to the `plugins/` folder on your disting NT's SD card and reboot the module.
+Copy `plugins/spaluter.o` to the `plugins/` folder on your disting NT's SD card and reboot the module.
 
 ## Hardware Controls
 
@@ -178,7 +178,7 @@ The custom display shows (256×64 px, standard parameter line at top):
 
 ## Usage
 
-1. Add the **Crab Nebula** algorithm to a slot on the disting NT
+1. Add the **Spaluter** algorithm to a slot on the disting NT
 2. In **Free Run** mode (default), sound starts immediately at C1 (~32.7 Hz)
 3. Shape the sound on the **Synthesis** page by sweeping Pulsaret and Window morphing controls (or use the pots)
 4. Add parallel formants on the **Formants** page and spread them with **Panning**

@@ -1589,7 +1589,7 @@ void setupUi(_NT_algorithm* self, _NT_float3& pots)
 static const _NT_factory factory =
 {
 	.guid = NT_MULTICHAR('S', 'r', 'P', 's'),
-	.name = "Crab Nebula",
+	.name = "Spaluter",
 	.description = "Pulsar synthesis with formants, masking, and CV",
 	.numSpecifications = 0,
 	.calculateRequirements = calculateRequirements,
