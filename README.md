@@ -118,7 +118,20 @@ Pitch Source (MIDI note or Base Pitch + Pitch CV) → Frequency (with glide)
   → Output L/R
 ```
 
-## Building
+## Installation
+
+A pre-built binary is included in the repository — no toolchain required.
+
+1. Download [`plugins/spaluter.o`](plugins/spaluter.o) from this repository (or clone the repo)
+2. Copy `spaluter.o` to the `plugins/` folder on your disting NT's SD card
+3. Reboot the module (power cycle or long-press the reset button)
+4. Add **Spaluter** to any algorithm slot
+
+The plugin appears in the algorithm list as "Spaluter" under the Instrument tag.
+
+## Building from Source
+
+If you want to modify the plugin and rebuild:
 
 ### Requirements
 
@@ -134,10 +147,6 @@ make
 ```
 
 This produces `plugins/spaluter.o`.
-
-### Install
-
-Copy `plugins/spaluter.o` to the `plugins/` folder on your disting NT's SD card and reboot the module.
 
 ## Hardware Controls
 
