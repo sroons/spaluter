@@ -1398,7 +1398,7 @@ bool draw(_NT_algorithm* self)
 	// Waveform visualization: draw pulsaret * window shape
 	int waveX = 10;
 	int waveY = 30;
-	int waveW = 100;
+	int waveW = 150;
 	int waveH = 24;
 
 	float pulsaretIdx = pThis->displayPulsaretIdx;
