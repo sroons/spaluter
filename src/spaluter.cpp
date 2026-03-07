@@ -143,12 +143,13 @@ struct _pulsarDTC {
 	uint8_t nextVoiceAge;            // Monotonic counter for age assignment
 	bool prevGateHigh;               // Previous gate CV state for edge detection
 	int8_t activeVoiceIdx;           // Voice currently tracking pitch CV (-1 if none)
+	float octDownSign;               // Frequency divider toggle: +1 or -1, flips on voice 0 pulse
 };
 
 // ============================================================
 // Parameter indices
 //
-// 61 parameters across 16 pages. Indices must match the order
+// 65 parameters across 16 pages. Indices must match the order
 // of entries in the parametersDefault[] array below.
 // ============================================================
 
@@ -246,6 +247,10 @@ enum {
 	kParamPreClipLMode, // Output mode
 	kParamPreClipR,     // Bus selector: pre-clip right output
 	kParamPreClipRMode, // Output mode
+	kParamOctDownL,     // Bus selector: octave-down left output
+	kParamOctDownLMode, // Output mode
+	kParamOctDownR,     // Bus selector: octave-down right output
+	kParamOctDownRMode, // Output mode
 
 	kNumParams,
 };
@@ -412,6 +417,8 @@ static const _NT_parameter parametersDefault[] = {
 	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Env Out",    0, 0 )
 	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Pre-clip L", 0, 0 )
 	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Pre-clip R", 0, 0 )
+	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Oct Down L", 0, 0 )
+	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Oct Down R", 0, 0 )
 };
 
 // ============================================================
@@ -432,7 +439,7 @@ static const uint8_t pageCV4[]       = { kParamPan1CV, kParamAttackCV, kParamRel
 static const uint8_t pageVoiceCV[]   = { kParamGateCV };
 static const uint8_t pageCV5[]       = { kParamAmpJitterCV, kParamTimingJitterCV, kParamGlissonCV };
 static const uint8_t pageEffects[]   = { kParamAmpJitter, kParamTimingJitter, kParamGlisson, kParamPerFormantMask, kParamFormantTrack };
-static const uint8_t pageAuxOut[]    = { kParamTriggerOut, kParamTriggerOutMode, kParamEnvOut, kParamEnvOutMode, kParamPreClipL, kParamPreClipLMode, kParamPreClipR, kParamPreClipRMode };
+static const uint8_t pageAuxOut[]    = { kParamTriggerOut, kParamTriggerOutMode, kParamEnvOut, kParamEnvOutMode, kParamPreClipL, kParamPreClipLMode, kParamPreClipR, kParamPreClipRMode, kParamOctDownL, kParamOctDownLMode, kParamOctDownR, kParamOctDownRMode };
 static const uint8_t pageRouting[]   = { kParamOutputL, kParamOutputLMode, kParamOutputR, kParamOutputRMode, kParamGateMode, kParamMidiCh, kParamBasePitch };
 
 static const _NT_parameterPage pages[] = {
@@ -706,6 +713,7 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 	memset(dtc, 0, sizeof(_pulsarDTC));
 	dtc->prevGateHigh = false;
 	dtc->activeVoiceIdx = -1;
+	dtc->octDownSign = 1.0f;
 
 	float sr = static_cast<float>(NT_globals.sampleRate);
 	float dcCoeff = 1.0f - (2.0f * static_cast<float>(M_PI) * 25.0f / sr);
@@ -1368,6 +1376,20 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		preClipR = busFrames + (pThis->v[kParamPreClipR] - 1) * numFrames;
 		preClipRReplace = pThis->v[kParamPreClipRMode];
 	}
+	float* octDownL = NULL;
+	bool octDownLReplace = false;
+	if (pThis->v[kParamOctDownL] > 0)
+	{
+		octDownL = busFrames + (pThis->v[kParamOctDownL] - 1) * numFrames;
+		octDownLReplace = pThis->v[kParamOctDownLMode];
+	}
+	float* octDownR = NULL;
+	bool octDownRReplace = false;
+	if (pThis->v[kParamOctDownR] > 0)
+	{
+		octDownR = busFrames + (pThis->v[kParamOctDownR] - 1) * numFrames;
+		octDownRReplace = pThis->v[kParamOctDownRMode];
+	}
 
 	// CV input bus pointers
 	float* cvPitch = NULL;
@@ -2016,6 +2038,26 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 				envOut[i] = maxEnvSample;
 			else
 				envOut[i] += maxEnvSample;
+		}
+
+		// Octave-down output (frequency divider: toggle sign on voice 0 pulse)
+		if (voice0Pulse)
+			dtc->octDownSign = -dtc->octDownSign;
+		if (octDownL)
+		{
+			float odL = totalL * dtc->octDownSign;
+			if (octDownLReplace)
+				octDownL[i] = odL;
+			else
+				octDownL[i] += odL;
+		}
+		if (octDownR)
+		{
+			float odR = totalR * dtc->octDownSign;
+			if (octDownRReplace)
+				octDownR[i] = odR;
+			else
+				octDownR[i] += odR;
 		}
 
 		// Track peak output level for display
