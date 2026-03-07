@@ -61,7 +61,30 @@ struct _pulsarDRAM {
 	float sampleBuffer[kSampleBufferSize];           // WAV sample data for sample-based pulsarets
 };
 
-// Per-voice state (~104 bytes each)
+// Per-voice parameter snapshot — frozen when voice is released
+// so releasing voices maintain their timbral state (~96 bytes)
+struct _voiceSnapshot {
+	float pulsaretIdx;
+	float windowIdx;
+	float manualDuty[3];
+	int dutyMode;
+	int formantCount;
+	float invFormantCount;
+	float formantHz[3];
+	float panL[3];
+	float panR[3];
+	int maskMode;
+	float maskAmount;
+	int burstOn;
+	int burstOff;
+	float attackCoeff;
+	float releaseCoeff;
+	float amplitude;
+	int useSample;
+	float sampleRateRatio;
+};
+
+// Per-voice state (~200 bytes each with snapshot)
 struct _pulsarVoice {
 	// Master oscillator
 	float masterPhase;          // 0.0–1.0 sawtooth phase accumulator
@@ -96,9 +119,12 @@ struct _pulsarVoice {
 	// Masking state
 	uint32_t prngState;         // LCG pseudo-random number generator state
 	uint32_t burstCounter;      // Burst pattern counter (modulo burstOn+burstOff)
+
+	// Parameter snapshot (frozen on release so releasing voices keep their timbre)
+	_voiceSnapshot snap;
 };
 
-// DTC: performance-critical per-sample audio state (~424 bytes)
+// DTC: performance-critical per-sample audio state (~808 bytes)
 // Lives in Cortex-M7 tightly-coupled memory for single-cycle access.
 static const int kMaxVoices = 4;
 
@@ -1404,9 +1430,9 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	pThis->displayAmplitude = effectiveAmplitude;
 	pThis->displayMask = effectiveMask;
 
-	// Precompute per-formant pan gains (shared across all voices)
+	// Precompute per-formant pan gains (always compute all 3 for snapshots)
 	float panL[3], panR[3];
-	for (int f = 0; f < formantCount; ++f)
+	for (int f = 0; f < 3; ++f)
 	{
 		float p = pThis->pan[f];
 		// Pan 1 CV: bipolar ±5V → ±1.0 offset on pan position
@@ -1421,9 +1447,9 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		panR[f] = sinf(angle);
 	}
 
-	// Precompute manual duty per formant (shared across voices in manual mode)
+	// Precompute manual duty per formant (always compute all 3 for snapshots)
 	float manualDuty[3];
-	for (int f = 0; f < formantCount; ++f)
+	for (int f = 0; f < 3; ++f)
 	{
 		manualDuty[f] = baseDuty + dutyCvOffset;
 		if (manualDuty[f] < 0.01f) manualDuty[f] = 0.01f;
@@ -1528,6 +1554,34 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 			// Track active voices (only on first sample for display)
 			if (i == 0) ++activeVoices;
 
+			// Update snapshot while voice is gated; freeze on release
+			// so releasing voices maintain their timbral state
+			if (voice.gate)
+			{
+				voice.snap.pulsaretIdx = pulsaretIdx;
+				voice.snap.windowIdx = windowIdx;
+				voice.snap.dutyMode = dutyMode;
+				voice.snap.formantCount = formantCount;
+				voice.snap.invFormantCount = invFormantCount;
+				voice.snap.maskMode = maskMode;
+				voice.snap.maskAmount = effectiveMask;
+				voice.snap.burstOn = burstOn;
+				voice.snap.burstOff = burstOff;
+				voice.snap.attackCoeff = modulatedAttackCoeff;
+				voice.snap.releaseCoeff = modulatedReleaseCoeff;
+				voice.snap.amplitude = effectiveAmplitude;
+				voice.snap.useSample = useSample;
+				voice.snap.sampleRateRatio = sampleRateRatio;
+				for (int f = 0; f < 3; ++f)
+				{
+					voice.snap.manualDuty[f] = manualDuty[f];
+					voice.snap.formantHz[f] = modulatedFormantHz[f];
+					voice.snap.panL[f] = panL[f];
+					voice.snap.panR[f] = panR[f];
+				}
+			}
+			_voiceSnapshot& vs = voice.snap;
+
 			// Glide: one-pole lag on frequency
 			float glideC = voice.glideCoeff;
 			voice.fundamentalHz = voice.targetFundamentalHz + glideC * (voice.fundamentalHz - voice.targetFundamentalHz);
@@ -1555,33 +1609,33 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 			}
 
 			// Masking: update target on new pulse (per-voice PRNG/burst state)
-			if (maskMode > 0 && newPulse)
+			if (vs.maskMode > 0 && newPulse)
 			{
 				float maskGain = 1.0f;
-				if (maskMode == 1)
+				if (vs.maskMode == 1)
 				{
 					// Stochastic: LCG PRNG vs threshold
 					voice.prngState = voice.prngState * 1664525u + 1013904223u;
 					float rnd = (float)(voice.prngState >> 8) / 16777216.0f;
-					maskGain = (rnd < effectiveMask) ? 0.0f : 1.0f;
+					maskGain = (rnd < vs.maskAmount) ? 0.0f : 1.0f;
 				}
-				else if (maskMode == 2)
+				else if (vs.maskMode == 2)
 				{
 					// Burst: on for burstOn, off for burstOff
-					int total = burstOn + burstOff;
+					int total = vs.burstOn + vs.burstOff;
 					if (total > 0)
 					{
 						voice.burstCounter = (voice.burstCounter + 1) % (uint32_t)total;
-						maskGain = (voice.burstCounter < (uint32_t)burstOn) ? 1.0f : 0.0f;
+						maskGain = (voice.burstCounter < (uint32_t)vs.burstOn) ? 1.0f : 0.0f;
 					}
 				}
-				for (int f = 0; f < formantCount; ++f)
+				for (int f = 0; f < vs.formantCount; ++f)
 					voice.maskTarget[f] = maskGain;
 			}
 
 			// Smooth mask continuously every sample toward target
 			float maskCoeff = voice.maskSmoothCoeff;
-			for (int f = 0; f < formantCount; ++f)
+			for (int f = 0; f < vs.formantCount; ++f)
 				voice.maskSmooth[f] = voice.maskTarget[f] + maskCoeff * (voice.maskSmooth[f] - voice.maskTarget[f]);
 
 			// Synthesis: accumulate formants
@@ -1589,18 +1643,18 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 			float sumR = 0.0f;
 			float phase = voice.masterPhase;
 
-			for (int f = 0; f < formantCount; ++f)
+			for (int f = 0; f < vs.formantCount; ++f)
 			{
 				// Compute per-voice formant duty
 				float duty;
-				if (dutyMode == 1 && freqHz > 0.0f)
+				if (vs.dutyMode == 1 && freqHz > 0.0f)
 				{
-					duty = freqHz / modulatedFormantHz[f];
+					duty = freqHz / vs.formantHz[f];
 					if (duty > 1.0f) duty = 1.0f;
 				}
 				else
 				{
-					duty = manualDuty[f];
+					duty = vs.manualDuty[f];
 				}
 
 				if (phase < duty)
@@ -1608,10 +1662,10 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 					float pulsaretPhase = phase / duty;
 					float sample;
 
-					if (useSample && pThis->sampleLoadedFrames >= 2)
+					if (vs.useSample && pThis->sampleLoadedFrames >= 2)
 					{
 						// Sample-based pulsaret
-						float samplePos = pulsaretPhase * (pThis->sampleLoadedFrames - 1) * sampleRateRatio;
+						float samplePos = pulsaretPhase * (pThis->sampleLoadedFrames - 1) * vs.sampleRateRatio;
 						int sIdx = (int)samplePos;
 						float sFrac = samplePos - sIdx;
 						if (sIdx < 0) sIdx = 0;
@@ -1621,26 +1675,26 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 					else
 					{
 						// Table-based pulsaret with morphing
-						float formantRatio = modulatedFormantHz[f] / (freqHz > 0.1f ? freqHz : 0.1f);
+						float formantRatio = vs.formantHz[f] / (freqHz > 0.1f ? freqHz : 0.1f);
 						float tablePhase = pulsaretPhase * formantRatio;
 						tablePhase -= static_cast<float>(static_cast<int>(tablePhase));
-						sample = readTableMorph(dram->pulsaretTables, pulsaretIdx, tablePhase);
+						sample = readTableMorph(dram->pulsaretTables, vs.pulsaretIdx, tablePhase);
 					}
 
 					// Window with morphing
-					float window = readWindowMorph(dram->windowTables, windowIdx, pulsaretPhase);
+					float window = readWindowMorph(dram->windowTables, vs.windowIdx, pulsaretPhase);
 
 					float s = sample * window * voice.maskSmooth[f];
 
 					// Pan to stereo (constant power)
-					sumL += s * panL[f];
-					sumR += s * panR[f];
+					sumL += s * vs.panL[f];
+					sumR += s * vs.panR[f];
 				}
 			}
 
 			// Normalize by formant count
-			sumL *= invFormantCount;
-			sumR *= invFormantCount;
+			sumL *= vs.invFormantCount;
+			sumR *= vs.invFormantCount;
 
 			// Envelope
 			if (freeRunMode)
@@ -1648,18 +1702,18 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 				// Per-pulse AR: attack on new pulse, release at period midpoint
 				if (newPulse) voice.envTarget = 1.0f;
 				if (voice.masterPhase >= 0.5f && voice.envTarget > 0.5f) voice.envTarget = 0.0f;
-				float envCoeff = (voice.envTarget > 0.5f) ? modulatedAttackCoeff : modulatedReleaseCoeff;
+				float envCoeff = (voice.envTarget > 0.5f) ? vs.attackCoeff : vs.releaseCoeff;
 				voice.envValue = voice.envTarget + envCoeff * (voice.envValue - voice.envTarget);
 			}
 			else
 			{
-				// MIDI: ASR envelope (one-pole smoother)
-				float envCoeff = voice.gate ? modulatedAttackCoeff : modulatedReleaseCoeff;
+				// MIDI/CV: ASR envelope (one-pole smoother)
+				float envCoeff = voice.gate ? vs.attackCoeff : vs.releaseCoeff;
 				voice.envValue = voice.envTarget + envCoeff * (voice.envValue - voice.envTarget);
 			}
 
 			float vel = voice.velocity * (1.0f / 127.0f);
-			float gain = voice.envValue * effectiveAmplitude * vel;
+			float gain = voice.envValue * vs.amplitude * vel;
 			sumL *= gain;
 			sumR *= gain;
 

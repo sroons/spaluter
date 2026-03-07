@@ -40,10 +40,10 @@ Roads also introduced **masking** — selectively muting pulses within the train
 - **5 window functions** — rectangular, Gaussian, Hann, exponential decay, linear decay — with continuous morphing
 - **1–3 parallel formants** with independent frequency control, per-formant CV modulation, and constant-power stereo panning
 - **Masking** — stochastic (probability-based) and burst (on/off pattern) modes for rhythmic textures
-- **1–4 voice polyphony** — play chords in MIDI mode (with voice stealing), stack harmonic intervals in Free Run mode, or trigger overlapping voices from CV gate+pitch (Rings-style)
+- **1–4 voice polyphony** — MIDI chords with voice stealing, Free Run interval stacking, or CV gate+pitch triggering with overlapping releases
 - **14 chord types** — Unison, Octaves, Fifths, Sub+Oct, Major, Minor, Maj7, Min7, Sus4, Dom7, Dim, Aug, Power, Open5th — for Free Run interval stacking
 - **Free Run mode** (default) — generates sound immediately without MIDI; pitch set by Base Pitch parameter + Pitch CV
-- **CV mode** — Rings-style polyphonic voice triggering from a single gate+pitch CV pair; each trigger allocates a new voice while previous voices ring out independently through their release envelopes
+- **CV mode** — Rings-style polyphonic voice triggering from gate+pitch CV; releasing voices freeze all parameters so only the active voice responds to changes
 - **Per-pulse AR envelope** in Free Run mode (retriggers each pulse); standard ASR in MIDI and CV modes
 - **12 bipolar CV inputs** — pitch (1V/oct), duty, mask, pulsaret morph, window morph, amplitude, formant 1/2/3 Hz, pan 1, attack, release — all 12 inputs used by default
 - **Sample-based pulsarets** — load WAV files from SD card as custom pulsaret waveforms with adjustable playback rate
@@ -132,54 +132,33 @@ Pitch Source:
 → Output L/R
 ```
 
-## CV Mode (Rings-style Voice Triggering)
+## CV Mode
 
-CV mode lets you trigger overlapping polyphonic voices from a single gate and pitch CV pair — similar to how Mutable Instruments Rings internally allocates resonator voices from a single excitation input.
-
-### How It Works
-
-- **Gate rising edge** — allocates the next available voice, captures the current Pitch CV as that voice's frequency, and starts the attack envelope
-- **Gate held** — the active voice tracks Pitch CV in real time (allows pitch bends during a note)
-- **Gate falling edge** — the active voice begins its release envelope; pitch is frozen at its last value
-- **Release phase** — the voice continues sounding independently while new gate triggers allocate fresh voices
-- **4 voices always available** — CV mode uses all 4 internal voices regardless of the Voice Count parameter
-
-When all 4 voices are occupied (still releasing), a new trigger steals the voice with the lowest envelope level. This means quiet, nearly-finished releases are recycled first.
+Polyphonic voice triggering from a single gate+pitch CV pair, inspired by Mutable Instruments Rings. Each gate trigger allocates a new voice while previous voices ring out through their release envelopes, up to 4 simultaneous voices.
 
 ### Setup
 
-1. On the **Routing** page, set **Gate Mode** to **CV**
-2. On the **CV Voice** page, set **Gate CV** to the input bus carrying your gate/trigger signal (e.g., 2)
-3. On the **CV Inputs** page, set **Pitch CV** to the input bus carrying your 1V/oct pitch signal (default: 1)
-4. **Important:** If your gate signal is on a bus that's already assigned to another CV (e.g., Amplitude CV defaults to bus 2), set that other CV to **0 (none)** to avoid the gate signal being interpreted as both a gate trigger and a CV modulation source
-5. On the **Envelope** page, set **Amplitude** above 0% and adjust **Attack** and **Release** to taste
+1. Set **Gate Mode** to **CV** (Routing page)
+2. Set **Gate CV** to your gate input bus (CV Voice page)
+3. Set **Pitch CV** to your 1V/oct pitch input bus (CV Inputs page, default: input 1)
+4. Set **Amplitude** above 0% and adjust **Attack**/**Release** (Envelope page)
 
-### Pitch
+> **Tip:** If your gate bus is already assigned to another CV parameter (e.g., Amplitude CV defaults to bus 2), set that CV to **0 (none)** to prevent the gate signal from being read as modulation.
 
-Pitch in CV mode is determined by **Base Pitch × Pitch CV** at the moment of each gate trigger:
+### Behavior
 
-- **Base Pitch** (Routing page) sets the reference pitch — this is the pitch you hear when Pitch CV is at 0V
-- **Pitch CV** (default: input 1) applies 1V/oct exponential scaling on top of Base Pitch
-- While the gate is held, the active voice tracks Pitch CV changes in real time
-- When the gate releases, the voice's pitch freezes — releasing voices are not affected by subsequent Pitch CV changes
+| Gate state | What happens |
+|---|---|
+| **Rising edge** | Allocates a voice, captures pitch from Base Pitch × Pitch CV, starts attack |
+| **Held high** | Active voice tracks Pitch CV in real time (pitch bends) |
+| **Falling edge** | Active voice enters release; pitch and all synthesis parameters freeze |
+| **During release** | Voice sounds independently — knob/CV changes only affect the next triggered voice |
 
-### Envelope
+When all 4 voices are releasing, a new trigger steals the quietest (lowest envelope) voice.
 
-CV mode uses a standard **ASR (Attack-Sustain-Release) envelope**, the same as MIDI mode:
+### Grayed-out parameters
 
-- **Attack** — time for the envelope to rise from 0 to full level after a gate trigger
-- **Sustain** — envelope holds at full level while gate is high
-- **Release** — time for the envelope to decay to silence after gate falls
-
-This is different from Free Run mode, which uses a per-pulse AR envelope that retriggers on every oscillator cycle.
-
-### What's Grayed Out
-
-In CV mode, the following parameters are grayed out (not applicable):
-
-- **Voice Count** — CV mode always uses all 4 voices
-- **Chord Type** — no chord interval stacking; each voice gets its pitch from the CV input
-- **MIDI Ch** — MIDI notes are ignored in CV mode
+**Voice Count**, **Chord Type**, and **MIDI Ch** are not used in CV mode and are automatically grayed out.
 
 ## Installation
 
