@@ -40,17 +40,18 @@ Roads also introduced **masking** — selectively muting pulses within the train
 - **5 window functions** — rectangular, Gaussian, Hann, exponential decay, linear decay — with continuous morphing
 - **1–3 parallel formants** with independent frequency control, per-formant CV modulation, and constant-power stereo panning
 - **Masking** — stochastic (probability-based) and burst (on/off pattern) modes for rhythmic textures
-- **1–4 voice polyphony** — play chords in MIDI mode (with voice stealing) or stack harmonic intervals in Free Run mode
+- **1–4 voice polyphony** — play chords in MIDI mode (with voice stealing), stack harmonic intervals in Free Run mode, or trigger overlapping voices from CV gate+pitch (Rings-style)
 - **14 chord types** — Unison, Octaves, Fifths, Sub+Oct, Major, Minor, Maj7, Min7, Sus4, Dom7, Dim, Aug, Power, Open5th — for Free Run interval stacking
 - **Free Run mode** (default) — generates sound immediately without MIDI; pitch set by Base Pitch parameter + Pitch CV
-- **Per-pulse AR envelope** in Free Run mode (retriggers each pulse); standard ASR in MIDI mode
+- **CV mode** — Rings-style polyphonic voice triggering from a single gate+pitch CV pair; each trigger allocates a new voice while previous voices ring out independently through their release envelopes
+- **Per-pulse AR envelope** in Free Run mode (retriggers each pulse); standard ASR in MIDI and CV modes
 - **12 bipolar CV inputs** — pitch (1V/oct), duty, mask, pulsaret morph, window morph, amplitude, formant 1/2/3 Hz, pan 1, attack, release — all 12 inputs used by default
 - **Sample-based pulsarets** — load WAV files from SD card as custom pulsaret waveforms with adjustable playback rate
 - **Real-time display** — waveform preview responds to CV modulation, formant Hz readouts, amplitude %, envelope bar, frequency readout, gate indicator, peak output meter
 
 ## Parameters
 
-44 parameters across 12 pages:
+45 parameters across 13 pages:
 
 | Page | Parameter | Range | Default |
 |------|-----------|-------|---------|
@@ -80,13 +81,14 @@ Roads also introduced **masking** — selectively muting pulses within the train
 | | File | (SD card) | — |
 | | Sample Rate | 25–400% | 100% |
 | **CV Inputs** | *(see CV table below)* | | |
-| **Routing** | Gate Mode | MIDI / Free Run | Free Run |
+| **CV Voice** | Gate CV | Bus 0–28 | 0 (none) |
+| **Routing** | Gate Mode | MIDI / Free Run / CV | Free Run |
 | | Base Pitch | MIDI note 0–127 | C1 (24) |
 | | MIDI Ch | 1–16 | 1 |
 | | Output L | Bus 1–28 | Bus 13 |
 | | Output R | Bus 1–28 | Bus 14 |
 
-Unused parameters are automatically grayed out based on context (e.g., Formant 2/3 Hz when count=1, burst params when mask mode is not burst, Base Pitch in MIDI mode, MIDI Ch in Free Run mode, Chord Type in MIDI mode).
+Unused parameters are automatically grayed out based on context (e.g., Formant 2/3 Hz when count=1, burst params when mask mode is not burst, Base Pitch in MIDI mode, MIDI Ch in Free Run/CV mode, Chord Type in MIDI/CV mode, Voice Count in CV mode, Gate CV when not in CV mode).
 
 ## CV Inputs
 
@@ -112,17 +114,72 @@ CV modulation is applied as an offset on top of the parameter's base value (set 
 ## Signal Chain
 
 ```
-Pitch Source (MIDI note or Base Pitch × Chord Ratio + Pitch CV) → Frequency (with glide)
-  → For each voice (1–4):
-      Master Phase Oscillator → Pulse Trigger → Mask Decision (stochastic/burst)
-      → For each formant (1–3):
-          Pulsaret (table morph or sample) × Window (table morph) × Mask
-          → Constant-power pan → Stereo accumulate
-      → Normalize → Envelope (per-pulse AR in Free Run, ASR in MIDI) × Velocity × Amplitude
-      → DC-blocking highpass
-  → Sum voices → Normalize by voice count → Soft clip (Padé tanh)
-  → Output L/R
+Pitch Source:
+  MIDI mode:    MIDI note + Pitch CV
+  Free Run:     Base Pitch × Chord Ratio + Pitch CV
+  CV mode:      Base Pitch × Pitch CV (captured per voice at gate trigger)
+
+→ Frequency (with glide)
+→ For each voice (1–4):
+    Master Phase Oscillator → Pulse Trigger → Mask Decision (stochastic/burst)
+    → For each formant (1–3):
+        Pulsaret (table morph or sample) × Window (table morph) × Mask
+        → Constant-power pan → Stereo accumulate
+    → Normalize → Envelope × Velocity × Amplitude
+       (per-pulse AR in Free Run; ASR in MIDI and CV modes)
+    → DC-blocking highpass
+→ Sum voices → Normalize by voice count → Soft clip (Padé tanh)
+→ Output L/R
 ```
+
+## CV Mode (Rings-style Voice Triggering)
+
+CV mode lets you trigger overlapping polyphonic voices from a single gate and pitch CV pair — similar to how Mutable Instruments Rings internally allocates resonator voices from a single excitation input.
+
+### How It Works
+
+- **Gate rising edge** — allocates the next available voice, captures the current Pitch CV as that voice's frequency, and starts the attack envelope
+- **Gate held** — the active voice tracks Pitch CV in real time (allows pitch bends during a note)
+- **Gate falling edge** — the active voice begins its release envelope; pitch is frozen at its last value
+- **Release phase** — the voice continues sounding independently while new gate triggers allocate fresh voices
+- **4 voices always available** — CV mode uses all 4 internal voices regardless of the Voice Count parameter
+
+When all 4 voices are occupied (still releasing), a new trigger steals the voice with the lowest envelope level. This means quiet, nearly-finished releases are recycled first.
+
+### Setup
+
+1. On the **Routing** page, set **Gate Mode** to **CV**
+2. On the **CV Voice** page, set **Gate CV** to the input bus carrying your gate/trigger signal (e.g., 2)
+3. On the **CV Inputs** page, set **Pitch CV** to the input bus carrying your 1V/oct pitch signal (default: 1)
+4. **Important:** If your gate signal is on a bus that's already assigned to another CV (e.g., Amplitude CV defaults to bus 2), set that other CV to **0 (none)** to avoid the gate signal being interpreted as both a gate trigger and a CV modulation source
+5. On the **Envelope** page, set **Amplitude** above 0% and adjust **Attack** and **Release** to taste
+
+### Pitch
+
+Pitch in CV mode is determined by **Base Pitch × Pitch CV** at the moment of each gate trigger:
+
+- **Base Pitch** (Routing page) sets the reference pitch — this is the pitch you hear when Pitch CV is at 0V
+- **Pitch CV** (default: input 1) applies 1V/oct exponential scaling on top of Base Pitch
+- While the gate is held, the active voice tracks Pitch CV changes in real time
+- When the gate releases, the voice's pitch freezes — releasing voices are not affected by subsequent Pitch CV changes
+
+### Envelope
+
+CV mode uses a standard **ASR (Attack-Sustain-Release) envelope**, the same as MIDI mode:
+
+- **Attack** — time for the envelope to rise from 0 to full level after a gate trigger
+- **Sustain** — envelope holds at full level while gate is high
+- **Release** — time for the envelope to decay to silence after gate falls
+
+This is different from Free Run mode, which uses a per-pulse AR envelope that retriggers on every oscillator cycle.
+
+### What's Grayed Out
+
+In CV mode, the following parameters are grayed out (not applicable):
+
+- **Voice Count** — CV mode always uses all 4 voices
+- **Chord Type** — no chord interval stacking; each voice gets its pitch from the CV input
+- **MIDI Ch** — MIDI notes are ignored in CV mode
 
 ## Installation
 
@@ -216,7 +273,7 @@ The custom display shows (256×64 px, standard parameter line at top):
 - **Chord type label** — "MAJ", "OCT", etc. (Free Run mode; dimmed when voice count is 1)
 - **Envelope bar** — max envelope across all voices
 - **Gate indicator** — lit when any voice gate is open
-- **"FR" label** — shown when in Free Run mode
+- **Mode label** — "FR" in Free Run mode, "CV" in CV mode
 - **Peak output meter** — below waveform, shows output level
 - **F1/F2/F3 Hz readouts** — effective formant frequencies after CV modulation (inactive formants shown dimmed)
 - **Amplitude %** — effective amplitude after CV modulation
@@ -231,6 +288,7 @@ The custom display shows (256×64 px, standard parameter line at top):
 6. Patch CV sources to modulate formant frequencies, duty cycle, mask amount, pulsaret/window morph, amplitude, pan, attack, or release — all 12 inputs are assigned by default
 7. Add voices on the **Polyphony** page — in Free Run mode, choose a **Chord Type** to stack intervals; in MIDI mode, play chords
 8. For MIDI control, switch **Gate Mode** to MIDI on the **Routing** page and set your MIDI channel
+9. For CV voice triggering, switch **Gate Mode** to CV, set **Gate CV** to your gate input bus, and set **Pitch CV** to your pitch input — see [CV Mode](#cv-mode-rings-style-voice-triggering) for full setup
 9. Optionally load a WAV file from the SD card as a custom pulsaret waveform on the **Sample** page
 
 ## Sound Design Tips
