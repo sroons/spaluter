@@ -1751,14 +1751,13 @@ bool draw(_NT_algorithm* self)
 		fbuf[aLen + 1] = 0;
 		NT_drawText(barX, barY + barH + 4, fbuf, 10, kNT_textLeft, kNT_textTiny);
 
-		// CPU load readout (bottom right, normal font for % glyph)
+		// CPU load readout (bottom right)
 		{
 			char cpuBuf[16];
 			cpuBuf[0] = 'C'; cpuBuf[1] = 'P'; cpuBuf[2] = 'U'; cpuBuf[3] = ':';
 			int cl = NT_floatToString(cpuBuf + 4, pThis->displayCpuPercent, 1);
-			cpuBuf[4 + cl] = '%';
-			cpuBuf[4 + cl + 1] = 0;
-			NT_drawText(barX, fmtY, cpuBuf, 6, kNT_textLeft, kNT_textNormal);
+			cpuBuf[4+cl]=' '; cpuBuf[5+cl]='p'; cpuBuf[6+cl]='c'; cpuBuf[7+cl]='t'; cpuBuf[8+cl]='.'; cpuBuf[9+cl]=0;
+			NT_drawText(barX, fmtY, cpuBuf, 6, kNT_textLeft, kNT_textTiny);
 		}
 	}
 
