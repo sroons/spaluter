@@ -1752,10 +1752,14 @@ bool draw(_NT_algorithm* self)
 		NT_drawText(barX, barY + barH + 4, fbuf, 10, kNT_textLeft, kNT_textTiny);
 
 		// CPU load readout (bottom right)
-		fbuf[0] = 'C'; fbuf[1] = 'P'; fbuf[2] = 'U'; fbuf[3] = ':';
-		int cpuLen = NT_floatToString(fbuf + 4, pThis->displayCpuPercent, 1);
-		fbuf[4 + cpuLen] = 0;
-		NT_drawText(barX, fmtY, fbuf, 6, kNT_textLeft, kNT_textTiny);
+		{
+			char cpuBuf[16];
+			cpuBuf[0] = 'C'; cpuBuf[1] = 'P'; cpuBuf[2] = 'U'; cpuBuf[3] = ':';
+			int cl = NT_floatToString(cpuBuf + 4, pThis->displayCpuPercent, 1);
+			cpuBuf[4 + cl] = '%';
+			cpuBuf[4 + cl + 1] = 0;
+			NT_drawText(barX, fmtY, cpuBuf, 6, kNT_textLeft, kNT_textTiny);
+		}
 	}
 
 	return false;
