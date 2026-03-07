@@ -82,6 +82,11 @@ struct _voiceSnapshot {
 	float amplitude;
 	int useSample;
 	float sampleRateRatio;
+	float glissonDepth;       // ±2.0 range (mapped from param)
+	float ampJitterAmount;    // 0.0–1.0
+	float timingJitterAmount; // 0.0–1.0
+	bool perFormantMask;
+	bool formantTrack;
 };
 
 // Per-voice state (~200 bytes each with snapshot)
@@ -120,11 +125,15 @@ struct _pulsarVoice {
 	uint32_t prngState;         // LCG pseudo-random number generator state
 	uint32_t burstCounter;      // Burst pattern counter (modulo burstOn+burstOff)
 
+	// Per-pulse jitter state (recomputed each pulse)
+	float ampJitter;            // Random amplitude multiplier (0.0–1.0)
+	float phaseIncMult;         // Random timing multiplier (~0.8–1.2)
+
 	// Parameter snapshot (frozen on release so releasing voices keep their timbre)
 	_voiceSnapshot snap;
 };
 
-// DTC: performance-critical per-sample audio state (~808 bytes)
+// DTC: performance-critical per-sample audio state (~896 bytes)
 // Lives in Cortex-M7 tightly-coupled memory for single-cycle access.
 static const int kMaxVoices = 4;
 
@@ -139,7 +148,7 @@ struct _pulsarDTC {
 // ============================================================
 // Parameter indices
 //
-// 45 parameters across 13 pages. Indices must match the order
+// 61 parameters across 16 pages. Indices must match the order
 // of entries in the parametersDefault[] array below.
 // ============================================================
 
@@ -216,6 +225,28 @@ enum {
 	// -- CV Voice page --
 	kParamGateCV,       // Bus selector: gate input (>2.5V = high)
 
+	// -- CV Effects page --
+	kParamAmpJitterCV,  // Bus selector: bipolar ±5V → ±50% amp jitter offset
+	kParamTimingJitterCV, // Bus selector: bipolar ±5V → ±50% timing jitter offset
+	kParamGlissonCV,    // Bus selector: bipolar ±5V → ±2.0 oct glisson offset
+
+	// -- Effects page --
+	kParamAmpJitter,    // 0–100%: per-pulse random amplitude reduction
+	kParamTimingJitter, // 0–100%: per-pulse random period variation
+	kParamGlisson,      // -100 to +100 (scaling10 → ±10.0 → ±2 octaves): pitch sweep within pulsaret
+	kParamPerFormantMask, // Enum: Off/On — independent mask per formant
+	kParamFormantTrack, // Enum: Fixed/Track — formant Hz tracks voice pitch
+
+	// -- Aux Outputs page --
+	kParamTriggerOut,   // Bus selector: pulse trigger output
+	kParamTriggerOutMode, // Output mode
+	kParamEnvOut,       // Bus selector: envelope CV output
+	kParamEnvOutMode,   // Output mode
+	kParamPreClipL,     // Bus selector: pre-clip left output
+	kParamPreClipLMode, // Output mode
+	kParamPreClipR,     // Bus selector: pre-clip right output
+	kParamPreClipRMode, // Output mode
+
 	kNumParams,
 };
 
@@ -226,6 +257,8 @@ enum {
 static char const * const enumDutyMode[] = { "Manual", "Formant" };
 static char const * const enumMaskMode[] = { "Off", "Stochastic", "Burst" };
 static char const * const enumUseSample[] = { "Off", "On" };
+static char const * const enumOnOff[] = { "Off", "On" };
+static char const * const enumFormantTrack[] = { "Fixed", "Track" };
 static char const * const enumGateMode[] = { "MIDI", "Free Run", "CV" };
 static char const * const enumChordType[] = {
 	"Unison", "Octaves", "Fifths", "Sub+Oct",
@@ -361,6 +394,24 @@ static const _NT_parameter parametersDefault[] = {
 
 	// CV Voice page
 	NT_PARAMETER_CV_INPUT( "Gate CV",        0, 0 )
+
+	// CV Effects page
+	NT_PARAMETER_CV_INPUT( "Amp Jit CV",     0, 0 )
+	NT_PARAMETER_CV_INPUT( "Time Jit CV",    0, 0 )
+	NT_PARAMETER_CV_INPUT( "Glisson CV",     0, 0 )
+
+	// Effects page
+	{ .name = "Amp Jitter",    .min = 0,    .max = 100,  .def = 0,   .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
+	{ .name = "Time Jitter",   .min = 0,    .max = 100,  .def = 0,   .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
+	{ .name = "Glisson",       .min = -100, .max = 100,  .def = 0,   .unit = kNT_unitNone,    .scaling = kNT_scaling10,   .enumStrings = NULL },
+	{ .name = "Indep Mask",    .min = 0,    .max = 1,    .def = 0,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumOnOff },
+	{ .name = "Formant Track", .min = 0,    .max = 1,    .def = 0,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumFormantTrack },
+
+	// Aux Outputs page
+	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Trig Out",   0, 0 )
+	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Env Out",    0, 0 )
+	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Pre-clip L", 0, 0 )
+	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Pre-clip R", 0, 0 )
 };
 
 // ============================================================
@@ -379,6 +430,9 @@ static const uint8_t pageCV2[]       = { kParamPulsaretCV, kParamWindowCV, kPara
 static const uint8_t pageCV3[]       = { kParamFormant1CV, kParamFormant2CV, kParamFormant3CV };
 static const uint8_t pageCV4[]       = { kParamPan1CV, kParamAttackCV, kParamReleaseCV };
 static const uint8_t pageVoiceCV[]   = { kParamGateCV };
+static const uint8_t pageCV5[]       = { kParamAmpJitterCV, kParamTimingJitterCV, kParamGlissonCV };
+static const uint8_t pageEffects[]   = { kParamAmpJitter, kParamTimingJitter, kParamGlisson, kParamPerFormantMask, kParamFormantTrack };
+static const uint8_t pageAuxOut[]    = { kParamTriggerOut, kParamTriggerOutMode, kParamEnvOut, kParamEnvOutMode, kParamPreClipL, kParamPreClipLMode, kParamPreClipR, kParamPreClipRMode };
 static const uint8_t pageRouting[]   = { kParamOutputL, kParamOutputLMode, kParamOutputR, kParamOutputRMode, kParamGateMode, kParamMidiCh, kParamBasePitch };
 
 static const _NT_parameterPage pages[] = {
@@ -387,6 +441,7 @@ static const _NT_parameterPage pages[] = {
 	{ .name = "Masking",    .numParams = ARRAY_SIZE(pageMasking),   .group = 3, .params = pageMasking },
 	{ .name = "Envelope",   .numParams = ARRAY_SIZE(pageEnvelope),  .group = 4, .params = pageEnvelope },
 	{ .name = "Panning",    .numParams = ARRAY_SIZE(pagePanning),   .group = 5, .params = pagePanning },
+	{ .name = "Effects",    .numParams = ARRAY_SIZE(pageEffects),   .group = 8,  .params = pageEffects },
 	{ .name = "Polyphony",  .numParams = ARRAY_SIZE(pagePolyphony), .group = 7, .params = pagePolyphony },
 	{ .name = "Sample",     .numParams = ARRAY_SIZE(pageSample),    .group = 6, .params = pageSample },
 	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV1),       .group = 10, .params = pageCV1 },
@@ -394,6 +449,8 @@ static const _NT_parameterPage pages[] = {
 	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV3),       .group = 10, .params = pageCV3 },
 	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV4),       .group = 10, .params = pageCV4 },
 	{ .name = "CV Voice",   .numParams = ARRAY_SIZE(pageVoiceCV),  .group = 10, .params = pageVoiceCV },
+	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV5),       .group = 10, .params = pageCV5 },
+	{ .name = "Aux Out",    .numParams = ARRAY_SIZE(pageAuxOut),    .group = 9,  .params = pageAuxOut },
 	{ .name = "Routing",    .numParams = ARRAY_SIZE(pageRouting),   .group = 11, .params = pageRouting },
 };
 
@@ -444,6 +501,13 @@ struct _pulsarAlgorithm : public _NT_algorithm
 	float peakLevel;                  // Peak |output| over last block (for display)
 	int voiceCount;                   // 1–4: active voice count
 	int chordType;                  // 0–13: chord/interval type for Free Run
+
+	// Effects cached params
+	float ampJitter;                // 0.0–1.0: per-pulse amplitude jitter amount
+	float timingJitter;             // 0.0–1.0: per-pulse timing jitter amount
+	float glissonDepth;             // ±2.0: pitch sweep depth in octaves
+	int perFormantMask;             // 0=off, 1=on: independent mask per formant
+	int formantTrack;               // 0=fixed, 1=track: formant Hz tracks pitch
 
 	// Display state (written by step at block rate, read by draw)
 	// Volatile: step() and draw() may run in different interrupt contexts
@@ -655,6 +719,8 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 		voice.prngState = 48271u + v * 12345u;
 		voice.leakDC_coeff = dcCoeff;
 		voice.maskSmoothCoeff = maskCoeff;
+		voice.ampJitter = 1.0f;
+		voice.phaseIncMult = 1.0f;
 		for (int i = 0; i < 3; ++i)
 		{
 			voice.formantDuty[i] = 0.5f;
@@ -690,6 +756,11 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 	alg->peakLevel = 0.0f;
 	alg->voiceCount = 1;
 	alg->chordType = 0;
+	alg->ampJitter = 0.0f;
+	alg->timingJitter = 0.0f;
+	alg->glissonDepth = 0.0f;
+	alg->perFormantMask = 0;
+	alg->formantTrack = 0;
 	alg->displayPulsaretIdx = 2.5f;
 	alg->displayWindowIdx = 0.5f;
 	alg->displayDuty = 0.5f;
@@ -859,6 +930,7 @@ void parameterChanged(_NT_algorithm* self, int p)
 			NT_setParameterGrayedOut(algIdx, kParamMaskAmount + offset, pThis->maskMode == 0);
 			NT_setParameterGrayedOut(algIdx, kParamBurstOn + offset, pThis->maskMode != 2);
 			NT_setParameterGrayedOut(algIdx, kParamBurstOff + offset, pThis->maskMode != 2);
+			NT_setParameterGrayedOut(algIdx, kParamPerFormantMask + offset, pThis->maskMode == 0);
 		}
 		break;
 	case kParamMaskAmount:
@@ -994,6 +1066,23 @@ void parameterChanged(_NT_algorithm* self, int p)
 		pThis->chordType = pThis->v[kParamChordType];
 		if (pThis->gateMode == 1)
 			updateFreeRunVoices(pThis);
+		break;
+
+	case kParamAmpJitter:
+		pThis->ampJitter = pThis->v[kParamAmpJitter] / 100.0f;
+		break;
+	case kParamTimingJitter:
+		pThis->timingJitter = pThis->v[kParamTimingJitter] / 100.0f;
+		break;
+	case kParamGlisson:
+		// scaling10 gives ±10.0, multiply by 0.2 → ±2.0 octaves
+		pThis->glissonDepth = pThis->v[kParamGlisson] * 0.02f;
+		break;
+	case kParamPerFormantMask:
+		pThis->perFormantMask = pThis->v[kParamPerFormantMask];
+		break;
+	case kParamFormantTrack:
+		pThis->formantTrack = pThis->v[kParamFormantTrack];
 		break;
 	}
 }
@@ -1250,6 +1339,36 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	bool replaceL = pThis->v[kParamOutputLMode];
 	bool replaceR = pThis->v[kParamOutputRMode];
 
+	// Aux output bus pointers (bus 0 = disabled)
+	float* trigOut = NULL;
+	bool trigReplace = false;
+	if (pThis->v[kParamTriggerOut] > 0)
+	{
+		trigOut = busFrames + (pThis->v[kParamTriggerOut] - 1) * numFrames;
+		trigReplace = pThis->v[kParamTriggerOutMode];
+	}
+	float* envOut = NULL;
+	bool envReplace = false;
+	if (pThis->v[kParamEnvOut] > 0)
+	{
+		envOut = busFrames + (pThis->v[kParamEnvOut] - 1) * numFrames;
+		envReplace = pThis->v[kParamEnvOutMode];
+	}
+	float* preClipL = NULL;
+	bool preClipLReplace = false;
+	if (pThis->v[kParamPreClipL] > 0)
+	{
+		preClipL = busFrames + (pThis->v[kParamPreClipL] - 1) * numFrames;
+		preClipLReplace = pThis->v[kParamPreClipLMode];
+	}
+	float* preClipR = NULL;
+	bool preClipRReplace = false;
+	if (pThis->v[kParamPreClipR] > 0)
+	{
+		preClipR = busFrames + (pThis->v[kParamPreClipR] - 1) * numFrames;
+		preClipRReplace = pThis->v[kParamPreClipRMode];
+	}
+
 	// CV input bus pointers
 	float* cvPitch = NULL;
 	float* cvDuty = NULL;
@@ -1287,6 +1406,15 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		cvAttack = busFrames + (pThis->v[kParamAttackCV] - 1) * numFrames;
 	if (pThis->v[kParamReleaseCV] > 0)
 		cvRelease = busFrames + (pThis->v[kParamReleaseCV] - 1) * numFrames;
+	float* cvAmpJitter = NULL;
+	float* cvTimingJitter = NULL;
+	float* cvGlisson = NULL;
+	if (pThis->v[kParamAmpJitterCV] > 0)
+		cvAmpJitter = busFrames + (pThis->v[kParamAmpJitterCV] - 1) * numFrames;
+	if (pThis->v[kParamTimingJitterCV] > 0)
+		cvTimingJitter = busFrames + (pThis->v[kParamTimingJitterCV] - 1) * numFrames;
+	if (pThis->v[kParamGlissonCV] > 0)
+		cvGlisson = busFrames + (pThis->v[kParamGlissonCV] - 1) * numFrames;
 
 	// CV Voice gate bus pointer
 	float* cvGate = NULL;
@@ -1333,6 +1461,9 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	float cvPan1Avg = 0.0f;
 	float cvAttackAvg = 0.0f;
 	float cvReleaseAvg = 0.0f;
+	float cvAmpJitterAvg = 0.0f;
+	float cvTimingJitterAvg = 0.0f;
+	float cvGlissonAvg = 0.0f;
 	{
 		for (int i = 0; i < numFrames; ++i)
 		{
@@ -1347,6 +1478,9 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 			if (cvPan1) cvPan1Avg += cvPan1[i];
 			if (cvAttack) cvAttackAvg += cvAttack[i];
 			if (cvRelease) cvReleaseAvg += cvRelease[i];
+			if (cvAmpJitter) cvAmpJitterAvg += cvAmpJitter[i];
+			if (cvTimingJitter) cvTimingJitterAvg += cvTimingJitter[i];
+			if (cvGlisson) cvGlissonAvg += cvGlisson[i];
 		}
 		float invNumFrames = 1.0f / (float)numFrames;
 		if (cvDuty) cvDutyAvg *= invNumFrames;
@@ -1360,6 +1494,9 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		if (cvPan1) cvPan1Avg *= invNumFrames;
 		if (cvAttack) cvAttackAvg *= invNumFrames;
 		if (cvRelease) cvReleaseAvg *= invNumFrames;
+		if (cvAmpJitter) cvAmpJitterAvg *= invNumFrames;
+		if (cvTimingJitter) cvTimingJitterAvg *= invNumFrames;
+		if (cvGlisson) cvGlissonAvg *= invNumFrames;
 	}
 
 	// Duty CV: bipolar ±5V → ±20% offset
@@ -1417,6 +1554,21 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		modulatedReleaseCoeff = coeffFromMs(modReleaseMs, sr);
 	}
 
+	// Amp Jitter CV: bipolar ±5V → ±50% offset on jitter amount
+	float effectiveAmpJitter = pThis->ampJitter + cvAmpJitterAvg * 0.1f;
+	if (effectiveAmpJitter < 0.0f) effectiveAmpJitter = 0.0f;
+	if (effectiveAmpJitter > 1.0f) effectiveAmpJitter = 1.0f;
+
+	// Timing Jitter CV: bipolar ±5V → ±50% offset on jitter amount
+	float effectiveTimingJitter = pThis->timingJitter + cvTimingJitterAvg * 0.1f;
+	if (effectiveTimingJitter < 0.0f) effectiveTimingJitter = 0.0f;
+	if (effectiveTimingJitter > 1.0f) effectiveTimingJitter = 1.0f;
+
+	// Glisson CV: bipolar ±5V → ±2.0 octave offset on glisson depth
+	float effectiveGlisson = pThis->glissonDepth + cvGlissonAvg * 0.4f;
+	if (effectiveGlisson < -2.0f) effectiveGlisson = -2.0f;
+	if (effectiveGlisson > 2.0f) effectiveGlisson = 2.0f;
+
 	// Update display state for draw() — reflects CV modulation in realtime
 	pThis->displayPulsaretIdx = pulsaretIdx;
 	pThis->displayWindowIdx = windowIdx;
@@ -1468,6 +1620,8 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	{
 		float totalL = 0.0f;
 		float totalR = 0.0f;
+		bool voice0Pulse = false;
+		float maxEnvSample = 0.0f;
 
 		// CV gate+pitch voice triggering (per-sample edge detection)
 		if (cvMode && cvGate)
@@ -1572,6 +1726,11 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 				voice.snap.amplitude = effectiveAmplitude;
 				voice.snap.useSample = useSample;
 				voice.snap.sampleRateRatio = sampleRateRatio;
+				voice.snap.glissonDepth = effectiveGlisson;
+				voice.snap.ampJitterAmount = effectiveAmpJitter;
+				voice.snap.timingJitterAmount = effectiveTimingJitter;
+				voice.snap.perFormantMask = (pThis->perFormantMask != 0);
+				voice.snap.formantTrack = (pThis->formantTrack != 0);
 				for (int f = 0; f < 3; ++f)
 				{
 					voice.snap.manualDuty[f] = manualDuty[f];
@@ -1595,6 +1754,7 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 
 			// Advance master phase
 			float phaseInc = freqHz * invSr;
+			phaseInc *= voice.phaseIncMult; // Timing jitter
 			if (phaseInc < 0.0f) phaseInc = 0.0f;
 			if (phaseInc > 0.5f) phaseInc = 0.5f;
 
@@ -1608,29 +1768,87 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 				newPulse = true;
 			}
 
-			// Masking: update target on new pulse (per-voice PRNG/burst state)
-			if (vs.maskMode > 0 && newPulse)
+			// On new pulse: update mask targets, amplitude jitter, timing jitter
+			if (newPulse)
 			{
-				float maskGain = 1.0f;
-				if (vs.maskMode == 1)
+				// Amplitude jitter
+				if (vs.ampJitterAmount > 0.0f)
 				{
-					// Stochastic: LCG PRNG vs threshold
 					voice.prngState = voice.prngState * 1664525u + 1013904223u;
 					float rnd = (float)(voice.prngState >> 8) / 16777216.0f;
-					maskGain = (rnd < vs.maskAmount) ? 0.0f : 1.0f;
+					voice.ampJitter = 1.0f - vs.ampJitterAmount * rnd;
 				}
-				else if (vs.maskMode == 2)
+				else
 				{
-					// Burst: on for burstOn, off for burstOff
-					int total = vs.burstOn + vs.burstOff;
-					if (total > 0)
+					voice.ampJitter = 1.0f;
+				}
+
+				// Timing jitter
+				if (vs.timingJitterAmount > 0.0f)
+				{
+					voice.prngState = voice.prngState * 1664525u + 1013904223u;
+					float rnd = (float)(voice.prngState >> 8) / 16777216.0f;
+					voice.phaseIncMult = 1.0f + vs.timingJitterAmount * 0.2f * (rnd * 2.0f - 1.0f);
+				}
+				else
+				{
+					voice.phaseIncMult = 1.0f;
+				}
+
+				// Masking: update target on new pulse
+				if (vs.maskMode > 0)
+				{
+					if (vs.perFormantMask)
 					{
-						voice.burstCounter = (voice.burstCounter + 1) % (uint32_t)total;
-						maskGain = (voice.burstCounter < (uint32_t)vs.burstOn) ? 1.0f : 0.0f;
+						// Per-formant independent masking
+						for (int f = 0; f < vs.formantCount; ++f)
+						{
+							if (vs.maskMode == 1)
+							{
+								voice.prngState = voice.prngState * 1664525u + 1013904223u;
+								float rnd = (float)(voice.prngState >> 8) / 16777216.0f;
+								voice.maskTarget[f] = (rnd < vs.maskAmount) ? 0.0f : 1.0f;
+							}
+							else if (vs.maskMode == 2)
+							{
+								int total = vs.burstOn + vs.burstOff;
+								if (total > 0)
+								{
+									uint32_t counter = (voice.burstCounter + (uint32_t)f * (uint32_t)total / 3u) % (uint32_t)total;
+									voice.maskTarget[f] = (counter < (uint32_t)vs.burstOn) ? 1.0f : 0.0f;
+								}
+							}
+						}
+						if (vs.maskMode == 2)
+						{
+							int total = vs.burstOn + vs.burstOff;
+							if (total > 0)
+								voice.burstCounter = (voice.burstCounter + 1) % (uint32_t)total;
+						}
+					}
+					else
+					{
+						// Uniform masking: same mask for all formants
+						float maskGain = 1.0f;
+						if (vs.maskMode == 1)
+						{
+							voice.prngState = voice.prngState * 1664525u + 1013904223u;
+							float rnd = (float)(voice.prngState >> 8) / 16777216.0f;
+							maskGain = (rnd < vs.maskAmount) ? 0.0f : 1.0f;
+						}
+						else if (vs.maskMode == 2)
+						{
+							int total = vs.burstOn + vs.burstOff;
+							if (total > 0)
+							{
+								voice.burstCounter = (voice.burstCounter + 1) % (uint32_t)total;
+								maskGain = (voice.burstCounter < (uint32_t)vs.burstOn) ? 1.0f : 0.0f;
+							}
+						}
+						for (int f = 0; f < vs.formantCount; ++f)
+							voice.maskTarget[f] = maskGain;
 					}
 				}
-				for (int f = 0; f < vs.formantCount; ++f)
-					voice.maskTarget[f] = maskGain;
 			}
 
 			// Smooth mask continuously every sample toward target
@@ -1645,11 +1863,16 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 
 			for (int f = 0; f < vs.formantCount; ++f)
 			{
+				// Effective formant frequency (with optional pitch tracking)
+				float fHz = vs.formantHz[f];
+				if (vs.formantTrack)
+					fHz *= freqHz / pThis->basePitchHz;
+
 				// Compute per-voice formant duty
 				float duty;
 				if (vs.dutyMode == 1 && freqHz > 0.0f)
 				{
-					duty = freqHz / vs.formantHz[f];
+					duty = freqHz / fHz;
 					if (duty > 1.0f) duty = 1.0f;
 				}
 				else
@@ -1675,7 +1898,10 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 					else
 					{
 						// Table-based pulsaret with morphing
-						float formantRatio = vs.formantHz[f] / (freqHz > 0.1f ? freqHz : 0.1f);
+						float formantRatio = fHz / (freqHz > 0.1f ? freqHz : 0.1f);
+						// Glisson: pitch sweep within pulsaret
+						if (vs.glissonDepth != 0.0f)
+							formantRatio *= fastExp2f(vs.glissonDepth * phase);
 						float tablePhase = pulsaretPhase * formantRatio;
 						tablePhase -= static_cast<float>(static_cast<int>(tablePhase));
 						sample = readTableMorph(dram->pulsaretTables, vs.pulsaretIdx, tablePhase);
@@ -1713,9 +1939,13 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 			}
 
 			float vel = voice.velocity * (1.0f / 127.0f);
-			float gain = voice.envValue * vs.amplitude * vel;
+			float gain = voice.envValue * vs.amplitude * vel * voice.ampJitter;
 			sumL *= gain;
 			sumR *= gain;
+
+			// Track trigger and envelope for aux outputs
+			if (vi == 0 && newPulse) voice0Pulse = true;
+			if (voice.envValue > maxEnvSample) maxEnvSample = voice.envValue;
 
 			// DC-blocking highpass per voice (independent filter state)
 			float dcCoeff = voice.leakDC_coeff;
@@ -1738,6 +1968,22 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		totalL *= invVoiceCount;
 		totalR *= invVoiceCount;
 
+		// Pre-clip aux outputs (after normalize, before soft clip)
+		if (preClipL)
+		{
+			if (preClipLReplace)
+				preClipL[i] = totalL;
+			else
+				preClipL[i] += totalL;
+		}
+		if (preClipR)
+		{
+			if (preClipRReplace)
+				preClipR[i] = totalR;
+			else
+				preClipR[i] += totalR;
+		}
+
 		// Soft clip once on summed output (fast Pade tanh)
 		totalL = fastTanh(totalL);
 		totalR = fastTanh(totalR);
@@ -1752,6 +1998,25 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 			outR[i] = totalR;
 		else
 			outR[i] += totalR;
+
+		// Trigger output (voice 0 pulse)
+		if (trigOut)
+		{
+			float tv = voice0Pulse ? 1.0f : 0.0f;
+			if (trigReplace)
+				trigOut[i] = tv;
+			else
+				trigOut[i] += tv;
+		}
+
+		// Envelope CV output (max envelope across all voices)
+		if (envOut)
+		{
+			if (envReplace)
+				envOut[i] = maxEnvSample;
+			else
+				envOut[i] += maxEnvSample;
+		}
 
 		// Track peak output level for display
 		float absL = totalL < 0.0f ? -totalL : totalL;
