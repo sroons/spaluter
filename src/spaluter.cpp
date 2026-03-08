@@ -1038,11 +1038,17 @@ void parameterChanged(_NT_algorithm* self, int p)
 		}
 		if (pThis->gateMode == 1)
 		{
+			// Free Run: default amplitude to 0%
+			if (algIdx >= 0)
+				NT_setParameterFromUi(algIdx, kParamAmplitude + offset, 0);
 			// Free Run: set up all active voices with interval ratios
 			updateFreeRunVoices(pThis);
 		}
 		else if (pThis->gateMode == 2)
 		{
+			// CV: default amplitude to 80%
+			if (algIdx >= 0)
+				NT_setParameterFromUi(algIdx, kParamAmplitude + offset, 80);
 			// CV: fully reset all voices so no Free Run state bleeds through
 			for (int v = 0; v < kMaxVoices; ++v)
 			{
