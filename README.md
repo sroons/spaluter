@@ -6,6 +6,22 @@ A [pulsar synthesis](https://en.wikipedia.org/wiki/Pulsar_synthesis) instrument 
 
 ## What Is Pulsar Synthesis?
 
+### Short Version
+
+Pulsar synthesis builds sound from tiny snippets of a waveform called pulsarets. Think of it like a strobe light — but instead of flashes of light, you're hearing quick bursts of a waveform, repeating over and over.
+
+The speed of that repetition sets the pitch. Speed it up, you get a higher note. Slow it down, lower.
+
+Now, each burst doesn't have to fill the entire space before the next one. You can make it shorter, leaving a gap of silence in between. That's the duty cycle — and adjusting it dramatically changes the character of the sound, from full and warm to thin and buzzy.
+
+On top of that, you can shape the tone with formants. Formants are what make your voice sound like "ah" versus "ee" — they're resonant peaks that give a sound its vowel-like quality. Pulsar synthesis lets you dial those in directly, so you can make the sound brighter, darker, or almost vocal.
+
+You can also tell certain pulses to skip — randomly, or in patterns — which adds texture and grit, like the sound is breaking apart at the edges.
+
+What makes this powerful is that you get the stability of a traditional oscillator — solid pitch, predictable behavior — but with a huge range of timbral control on top. It can go from clean organ tones to alien vocal pads to glitchy rhythmic textures, all from the same core engine.
+
+### Longer Version
+
 Pulsar synthesis is a technique developed by [Curtis Roads](https://www.curtisroads.net/) and Alberto de Campo in the early 2000s, described in Roads' book [*Microsound*](https://mitpress.mit.edu/9780262681544/microsound/) (MIT Press, 2001). It belongs to the family of granular and particle-based synthesis methods that operate on the *micro-timescale* of sound — durations below about 100 milliseconds, where individual sonic events blur into continuous tones and textures.
 
 ### Core Concept
