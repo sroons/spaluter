@@ -32,7 +32,7 @@ A **pulsar** is a brief burst of sound (a **pulsaret**) shaped by an amplitude e
 2. **The window function** — the amplitude envelope applied to each pulsaret (Hann, Gaussian, exponential decay, etc.)
 3. **The duty cycle** — what fraction of each fundamental period contains active sound vs. silence
 
-When the duty cycle is 100%, every period is filled with sound and the result resembles classic wavetable synthesis. As the duty cycle decreases, each pulsaret occupies a shorter fraction of the period, introducing silence gaps that create a characteristic hollow, buzzing, or clicking quality. At very low duty cycles, the individual pulsarets become audible as distinct sonic particles.
+When the duty cycle is 100%, every period is filled with sound and the result resembles classic wavetable synthesis. As the duty cycle decreases, the pulsaret is centered in the period with equal silence gaps before and after, creating a characteristic hollow, buzzing, or clicking quality. At very low duty cycles, the individual pulsarets become audible as distinct sonic particles.
 
 ### Formants and Spectral Shaping
 
@@ -71,15 +71,26 @@ Roads also introduced **masking** — selectively muting pulses within the train
 - **Sub-octave output** — stereo octave-down via analog-style frequency divider, routable to any bus for layering a sub one octave below the fundamental
 - **Aux outputs** — pulse trigger, envelope follower, and pre-clip stereo taps — all bus-routable, disabled by default
 - **Sample-based pulsarets** — load WAV files from SD card as custom pulsaret waveforms with adjustable playback rate
-- **Real-time display** — waveform preview responds to CV modulation, formant Hz readouts, amplitude %, envelope bar, frequency readout, gate indicator, peak output meter
+- **Centered duty cycle** — active pulsaret is centered in the period with equal silence gaps before and after, producing symmetrical spectral sidebands
+- **Real-time display** — three separate waveform views (pulsaret, window, duty cycle), formant Hz readouts, amplitude %, drive %, envelope bar, frequency readout, gate indicator, peak output meter
 
 ## Parameters
 
-66 parameters across 16 pages:
+66 parameters across 15 pages, organized into 9 groups:
 
 | Page | Parameter | Range | Default |
 |------|-----------|-------|---------|
-| **Synthesis** | Pulsaret | 0.0–9.0 | 2.5 |
+| **Mode** | Gate Mode | MIDI / Free Run / CV | Free Run |
+| | Voice Count | 1–4 | 1 |
+| | Chord Type | 14 types (see Polyphony section) | Unison |
+| | MIDI Ch | 1–16 | 1 |
+| | Base Pitch | MIDI note 0–127 | C1 (24) |
+| **Level** | Amplitude | 0–200% | 0% |
+| | Drive | 100–400% | 100% |
+| | Attack | 0.1–2000 ms | 10 ms |
+| | Release | 1.0–3200 ms | 200 ms |
+| | Glide | 0–2000 ms | 0 ms |
+| **Waveform** | Pulsaret | 0.0–9.0 | 2.5 |
 | | Window | 0.0–4.0 | 0.5 |
 | | Duty Cycle | 1–100% | 50% |
 | | Duty Mode | Manual / Formant | Manual |
@@ -87,51 +98,37 @@ Roads also introduced **masking** — selectively muting pulses within the train
 | | Formant 1 Hz | 20–2000 Hz | 20 Hz |
 | | Formant 2 Hz | 20–2000 Hz | 200 Hz |
 | | Formant 3 Hz | 20–2000 Hz | 400 Hz |
-| **Masking** | Mask Mode | Off / Stochastic / Burst | Off |
+| | Formant Track | Fixed / Track | Fixed |
+| **Texture** | Mask Mode | Off / Stochastic / Burst | Off |
 | | Mask Amount | 0–100% | 50% |
 | | Burst On | 1–16 | 4 |
 | | Burst Off | 0–16 | 4 |
-| **Envelope** | Attack | 0.1–2000 ms | 10 ms |
-| | Release | 1.0–3200 ms | 200 ms |
-| | Amplitude | 0–200% | 0% |
-| | Drive | 100–400% | 100% |
-| | Glide | 0–2000 ms | 0 ms |
+| | Indep Mask | Off / On | Off |
+| **Texture** | Amp Jitter | 0–100% | 0% |
+| | Time Jitter | 0–100% | 0% |
+| | Glisson | -10.0 to +10.0 | 0 |
 | **Panning** | Pan 1 | -100 to +100 | 0 |
 | | Pan 2 | -100 to +100 | -50 |
 | | Pan 3 | -100 to +100 | +50 |
-| **Effects** | Amp Jitter | 0–100% | 0% |
-| | Time Jitter | 0–100% | 0% |
-| | Glisson | -10.0 to +10.0 | 0 |
-| | Indep Mask | Off / On | Off |
-| | Formant Track | Fixed / Track | Fixed |
-| **Polyphony** | Voice Count | 1–4 | 1 |
-| | Chord Type | Unison / Octaves / Fifths / Sub+Oct / Major / Minor / Maj7 / Min7 / Sus4 / Dom7 / Dim / Aug / Power / Open5th | Unison |
 | **Sample** | Use Sample | Off / On | Off |
 | | Folder | (SD card) | — |
 | | File | (SD card) | — |
 | | Sample Rate | 25–400% | 100% |
-| **CV Inputs** | *(see CV table below)* | | |
-| **CV Voice** | Gate CV | Bus 0–28 | 0 (none) |
-| **CV Inputs** | Amp Jit CV | Bus 0–28 | 0 (none) |
-| | Time Jit CV | Bus 0–28 | 0 (none) |
-| | Glisson CV | Bus 0–28 | 0 (none) |
-| **Aux Out** | Trig Out | Bus 0–28 | 0 (none) |
-| | Env Out | Bus 0–28 | 0 (none) |
-| | Pre-clip L | Bus 0–28 | 0 (none) |
-| | Pre-clip R | Bus 0–28 | 0 (none) |
-| | Oct Down L | Bus 0–28 | 0 (none) |
-| | Oct Down R | Bus 0–28 | 0 (none) |
-| **Routing** | Gate Mode | MIDI / Free Run / CV | Free Run |
-| | Base Pitch | MIDI note 0–127 | C1 (24) |
-| | MIDI Ch | 1–16 | 1 |
-| | Output L | Bus 1–28 | Bus 13 |
-| | Output R | Bus 1–28 | Bus 14 |
+| **Outputs** | Output L | Bus 1–64 | Bus 13 |
+| | Output R | Bus 1–64 | Bus 14 |
+| **Aux Out** | Trig Out | Bus 0–64 | 0 (none) |
+| | Env Out | Bus 0–64 | 0 (none) |
+| | Pre-clip L | Bus 0–64 | 0 (none) |
+| | Pre-clip R | Bus 0–64 | 0 (none) |
+| | Oct Down L | Bus 0–64 | 0 (none) |
+| | Oct Down R | Bus 0–64 | 0 (none) |
+| **CV Inputs** | *(see CV table below — 15 inputs across 5 pages)* | | |
 
 Unused parameters are automatically grayed out based on context (e.g., Formant 2/3 Hz when count is 1, Burst parameters when mask mode is not Burst, Indep Mask when masking is off, Chord Type in MIDI/CV mode, Voice Count in CV mode).
 
 ## CV Inputs
 
-All CV inputs are **bipolar** (±5V). Each is routable to any of the 28 buses (1–12 inputs, 13–20 outputs, 21–28 aux), or 0 for none.
+All CV inputs are **bipolar** (±5V). Each is routable to any of the 64 buses (1–12 inputs, 13–20 outputs, 21–64 aux), or 0 for none.
 
 | CV Input | Default Bus | Scaling | Effect |
 |----------|-------------|---------|--------|
@@ -187,10 +184,10 @@ Polyphonic voice triggering from a single gate+pitch CV pair, inspired by Mutabl
 
 ### Setup
 
-1. Set **Gate Mode** to **CV** (Routing page)
-2. Set **Gate CV** to your gate input bus (CV Voice page)
+1. Set **Gate Mode** to **CV** (Mode page)
+2. Set **Gate CV** to your gate input bus (CV Inputs page)
 3. Set **Pitch CV** to your 1V/oct pitch input bus (CV Inputs page, default: input 1)
-4. Set **Amplitude** above 0% and adjust **Attack**/**Release** (Envelope page)
+4. Set **Amplitude** above 0% and adjust **Attack**/**Release** (Level page)
 
 > **Tip:** If your gate bus is already assigned to another CV parameter (e.g., Amplitude CV defaults to bus 2), set that CV to **0 (none)** to prevent the gate signal from being read as modulation.
 
@@ -240,10 +237,10 @@ With just these two patched, you'll hear sound. The other 10 default CV inputs a
 
 If you want sound without any CV patched:
 
-1. Navigate to the **Envelope** page
+1. Navigate to the **Level** page
 2. Raise **Amplitude** above 0% (try 50–80%)
 3. Sound will begin immediately in Free Run mode at the default pitch (C1, ~32.7 Hz)
-4. Adjust **Base Pitch** on the **Routing** page to change the fundamental frequency
+4. Adjust **Base Pitch** on the **Mode** page to change the fundamental frequency
 
 You can combine both approaches — set a base amplitude manually and let CV modulate it further.
 
@@ -289,7 +286,7 @@ Encoders and buttons not listed below keep their standard disting NT behavior.
 
 ### Outputs
 
-Output L and Output R are routable to any output bus via the **Routing** page. Default: L = bus 13, R = bus 14.
+Output L and Output R are routable to any output bus via the **Outputs** page. Default: L = bus 13, R = bus 14.
 
 ### Aux Outputs
 
@@ -306,32 +303,36 @@ Six optional auxiliary outputs are available on the **Aux Out** page, all defaul
 
 ## Display
 
-The custom display shows (256×64 px, standard parameter line at top):
+The custom display (256×64 px) shows three real-time waveform views and synthesis state:
 
-- **Waveform preview** — real-time pulsaret × window shape, responds to CV modulation
-- **Fundamental Hz** — current oscillator frequency
+![Display layout](display.png)
+
+- **Pulsaret preview** (left box) — real-time pulsaret waveform shape, responds to CV modulation
+- **Window preview** (center box) — current window envelope shape
+- **Duty cycle preview** (right box) — pulsaret × window with centered silence gaps showing effective duty cycle
+- **Fundamental Hz + Chord type** — current frequency and chord label (e.g., "32.7 Hz MAJ")
+- **Amplitude %** — effective amplitude after CV modulation
+- **Drive %** — drive amount (dimmed at 100%, brighter when boosted)
 - **Formant count + voice count** — "2F 4V"
-- **Chord type label** — "MAJ", "OCT", etc. (Free Run mode; dimmed when voice count is 1)
 - **Envelope bar** — max envelope across all voices
 - **Gate indicator** — lit when any voice gate is open
 - **Mode label** — "FR" in Free Run mode, "CV" in CV mode
-- **Peak output meter** — below waveform, shows output level
+- **Peak output meter** — spans all three views, shows output level
 - **F1/F2/F3 Hz readouts** — formant frequencies after CV modulation (inactive formants dimmed)
-- **Amplitude %** — effective amplitude after CV modulation
+- **CPU load** — current CPU usage percentage
 
 ## Usage
 
 1. Add the **Spaluter** algorithm to a slot on the disting NT
-2. Patch a signal into **Input 2** (Amplitude CV) or raise **Amplitude** manually — the plugin starts silent by default
-3. Shape the sound on the **Synthesis** page by sweeping Pulsaret and Window morphing controls (or use the pots)
+2. Patch a signal into **Input 2** (Amplitude CV) or raise **Amplitude** on the **Level** page — the plugin starts silent by default
+3. Shape the sound on the **Waveform** page by sweeping Pulsaret and Window morphing controls (or use the pots)
 4. Add parallel formants on the **Formants** page and spread them with **Panning**
-5. Create rhythmic textures with **Masking** (stochastic for random dropouts, burst for repeating patterns)
-6. Add organic variation with the **Effects** page — amp jitter, timing jitter, and glisson bring movement; formant tracking and per-formant masking add spectral flexibility
-7. Patch CV sources into any of the 15 inputs — first 12 are assigned by default, effects CVs on a separate page
-8. Add voices on the **Polyphony** page — in Free Run mode, choose a **Chord Type** to stack intervals; in MIDI mode, play chords
-9. For MIDI control, switch **Gate Mode** to MIDI on the **Routing** page and set your MIDI channel
-10. For CV voice triggering, switch **Gate Mode** to CV, set **Gate CV** to your gate input bus, and set **Pitch CV** to your pitch input — see [CV Mode](#cv-mode-rings-style-voice-triggering) for full setup
-11. Optionally load a WAV file from the SD card as a custom pulsaret waveform on the **Sample** page
+5. Create rhythmic textures with **Texture** (stochastic or burst masking, amp/timing jitter, glisson)
+6. Patch CV sources into any of the 15 inputs — first 12 are assigned by default, effects CVs on a separate page
+7. Add voices on the **Mode** page — in Free Run mode, choose a **Chord Type** to stack intervals; in MIDI mode, play chords
+8. For MIDI control, switch **Gate Mode** to MIDI on the **Mode** page and set your MIDI channel
+9. For CV voice triggering, switch **Gate Mode** to CV, set **Gate CV** on the **CV Inputs** page — see [CV Mode](#cv-mode-rings-style-voice-triggering) for full setup
+10. Optionally load a WAV file from the SD card as a custom pulsaret waveform on the **Sample** page
 
 ## Sound Design Tips
 
