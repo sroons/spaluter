@@ -427,40 +427,38 @@ static const _NT_parameter parametersDefault[] = {
 // Parameter pages
 // ============================================================
 
-static const uint8_t pageSynthesis[] = { kParamPulsaret, kParamWindow, kParamDutyCycle, kParamDutyMode };
-static const uint8_t pageFormants[]  = { kParamFormantCount, kParamFormant1Hz, kParamFormant2Hz, kParamFormant3Hz };
-static const uint8_t pageMasking[]   = { kParamMaskMode, kParamMaskAmount, kParamBurstOn, kParamBurstOff };
-static const uint8_t pageEnvelope[]  = { kParamAttack, kParamRelease, kParamAmplitude, kParamDrive, kParamGlide };
+static const uint8_t pageMode[]      = { kParamGateMode, kParamVoiceCount, kParamChordType, kParamMidiCh, kParamBasePitch };
+static const uint8_t pageLevel[]     = { kParamAmplitude, kParamDrive, kParamAttack, kParamRelease, kParamGlide };
+static const uint8_t pageWaveform[]  = { kParamPulsaret, kParamWindow, kParamDutyCycle, kParamDutyMode };
+static const uint8_t pageFormants[]  = { kParamFormantCount, kParamFormant1Hz, kParamFormant2Hz, kParamFormant3Hz, kParamFormantTrack };
+static const uint8_t pageTexture1[]  = { kParamMaskMode, kParamMaskAmount, kParamBurstOn, kParamBurstOff, kParamPerFormantMask };
+static const uint8_t pageTexture2[]  = { kParamAmpJitter, kParamTimingJitter, kParamGlisson };
 static const uint8_t pagePanning[]   = { kParamPan1, kParamPan2, kParamPan3 };
-static const uint8_t pagePolyphony[] = { kParamVoiceCount, kParamChordType };
 static const uint8_t pageSample[]    = { kParamUseSample, kParamFolder, kParamFile, kParamSampleRate };
-static const uint8_t pageCV1[]       = { kParamPitchCV, kParamDutyCV, kParamMaskCV };
-static const uint8_t pageCV2[]       = { kParamPulsaretCV, kParamWindowCV, kParamAmplitudeCV };
+static const uint8_t pageOutputs[]   = { kParamOutputL, kParamOutputLMode, kParamOutputR, kParamOutputRMode };
+static const uint8_t pageAuxOut[]    = { kParamTriggerOut, kParamTriggerOutMode, kParamEnvOut, kParamEnvOutMode, kParamPreClipL, kParamPreClipLMode, kParamPreClipR, kParamPreClipRMode, kParamOctDownL, kParamOctDownLMode, kParamOctDownR, kParamOctDownRMode };
+static const uint8_t pageCV1[]       = { kParamPitchCV, kParamAmplitudeCV, kParamDutyCV, kParamMaskCV };
+static const uint8_t pageCV2[]       = { kParamPulsaretCV, kParamWindowCV, kParamGateCV };
 static const uint8_t pageCV3[]       = { kParamFormant1CV, kParamFormant2CV, kParamFormant3CV };
 static const uint8_t pageCV4[]       = { kParamPan1CV, kParamAttackCV, kParamReleaseCV };
-static const uint8_t pageVoiceCV[]   = { kParamGateCV };
 static const uint8_t pageCV5[]       = { kParamAmpJitterCV, kParamTimingJitterCV, kParamGlissonCV };
-static const uint8_t pageEffects[]   = { kParamAmpJitter, kParamTimingJitter, kParamGlisson, kParamPerFormantMask, kParamFormantTrack };
-static const uint8_t pageAuxOut[]    = { kParamTriggerOut, kParamTriggerOutMode, kParamEnvOut, kParamEnvOutMode, kParamPreClipL, kParamPreClipLMode, kParamPreClipR, kParamPreClipRMode, kParamOctDownL, kParamOctDownLMode, kParamOctDownR, kParamOctDownRMode };
-static const uint8_t pageRouting[]   = { kParamOutputL, kParamOutputLMode, kParamOutputR, kParamOutputRMode, kParamGateMode, kParamMidiCh, kParamBasePitch };
 
 static const _NT_parameterPage pages[] = {
-	{ .name = "Synthesis",  .numParams = ARRAY_SIZE(pageSynthesis), .group = 1, .params = pageSynthesis },
-	{ .name = "Formants",   .numParams = ARRAY_SIZE(pageFormants),  .group = 2, .params = pageFormants },
-	{ .name = "Masking",    .numParams = ARRAY_SIZE(pageMasking),   .group = 3, .params = pageMasking },
-	{ .name = "Envelope",   .numParams = ARRAY_SIZE(pageEnvelope),  .group = 4, .params = pageEnvelope },
-	{ .name = "Panning",    .numParams = ARRAY_SIZE(pagePanning),   .group = 5, .params = pagePanning },
-	{ .name = "Effects",    .numParams = ARRAY_SIZE(pageEffects),   .group = 8,  .params = pageEffects },
-	{ .name = "Polyphony",  .numParams = ARRAY_SIZE(pagePolyphony), .group = 7, .params = pagePolyphony },
-	{ .name = "Sample",     .numParams = ARRAY_SIZE(pageSample),    .group = 6, .params = pageSample },
-	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV1),       .group = 10, .params = pageCV1 },
-	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV2),       .group = 10, .params = pageCV2 },
-	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV3),       .group = 10, .params = pageCV3 },
-	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV4),       .group = 10, .params = pageCV4 },
-	{ .name = "CV Voice",   .numParams = ARRAY_SIZE(pageVoiceCV),  .group = 10, .params = pageVoiceCV },
-	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV5),       .group = 10, .params = pageCV5 },
-	{ .name = "Aux Out",    .numParams = ARRAY_SIZE(pageAuxOut),    .group = 9,  .params = pageAuxOut },
-	{ .name = "Routing",    .numParams = ARRAY_SIZE(pageRouting),   .group = 11, .params = pageRouting },
+	{ .name = "Mode",       .numParams = ARRAY_SIZE(pageMode),      .group = 1,  .params = pageMode },
+	{ .name = "Level",      .numParams = ARRAY_SIZE(pageLevel),     .group = 2,  .params = pageLevel },
+	{ .name = "Waveform",   .numParams = ARRAY_SIZE(pageWaveform),  .group = 3,  .params = pageWaveform },
+	{ .name = "Formants",   .numParams = ARRAY_SIZE(pageFormants),  .group = 4,  .params = pageFormants },
+	{ .name = "Texture",    .numParams = ARRAY_SIZE(pageTexture1),  .group = 5,  .params = pageTexture1 },
+	{ .name = "Texture",    .numParams = ARRAY_SIZE(pageTexture2),  .group = 5,  .params = pageTexture2 },
+	{ .name = "Panning",    .numParams = ARRAY_SIZE(pagePanning),   .group = 6,  .params = pagePanning },
+	{ .name = "Sample",     .numParams = ARRAY_SIZE(pageSample),    .group = 7,  .params = pageSample },
+	{ .name = "Outputs",    .numParams = ARRAY_SIZE(pageOutputs),   .group = 8,  .params = pageOutputs },
+	{ .name = "Aux Out",    .numParams = ARRAY_SIZE(pageAuxOut),    .group = 8,  .params = pageAuxOut },
+	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV1),       .group = 9,  .params = pageCV1 },
+	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV2),       .group = 9,  .params = pageCV2 },
+	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV3),       .group = 9,  .params = pageCV3 },
+	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV4),       .group = 9,  .params = pageCV4 },
+	{ .name = "CV Inputs",  .numParams = ARRAY_SIZE(pageCV5),       .group = 9,  .params = pageCV5 },
 };
 
 static const _NT_parameterPages parameterPages = {
@@ -535,6 +533,9 @@ struct _pulsarAlgorithm : public _NT_algorithm
 	bool cardMounted;                 // Tracks SD card mount state for change detection
 	bool awaitingCallback;            // True while an async WAV load is in progress
 	int sampleLoadedFrames;           // Number of valid frames in sampleBuffer
+
+	// Guard against reentrant NT_setParameterFromUi during initial param setup
+	bool initialized;                 // Set true after first step() call
 };
 
 // ============================================================
@@ -676,6 +677,21 @@ static void wavCallback(void* callbackData, bool success)
 }
 
 // ============================================================
+// Static requirements — no shared memory needed
+// ============================================================
+
+void calculateStaticRequirements(_NT_staticRequirements& req)
+{
+	req.dram = 0;
+}
+
+void initialise(_NT_staticMemoryPtrs& ptrs, const _NT_staticRequirements& req)
+{
+	(void)ptrs;
+	(void)req;
+}
+
+// ============================================================
 // calculateRequirements — tell the host how much memory we need
 // ============================================================
 
@@ -740,7 +756,7 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 		}
 	}
 
-	// Initialize algorithm cached values (placement new does NOT zero members)
+	// Initialize algorithm cached values
 	alg->pulsaretIndex = 2.5f;
 	alg->windowIndex = 0.5f;
 	alg->dutyCycle = 0.5f;
@@ -786,6 +802,7 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 	alg->cardMounted = false;
 	alg->awaitingCallback = false;
 	alg->sampleLoadedFrames = 0;
+	alg->initialized = false;
 
 	// Setup WAV request
 	alg->wavRequest.callback = wavCallback;
@@ -897,6 +914,7 @@ void parameterChanged(_NT_algorithm* self, int p)
 	float sr = static_cast<float>(NT_globals.sampleRate);
 	int algIdx = NT_algorithmIndex(self);
 	uint32_t offset = NT_parameterOffset();
+
 
 	switch (p)
 	{
@@ -1038,16 +1056,16 @@ void parameterChanged(_NT_algorithm* self, int p)
 		}
 		if (pThis->gateMode == 1)
 		{
-			// Free Run: default amplitude to 0%
-			if (algIdx >= 0)
+			// Free Run: default amplitude to 0% (skip during initial param setup)
+			if (algIdx >= 0 && pThis->initialized)
 				NT_setParameterFromUi(algIdx, kParamAmplitude + offset, 0);
 			// Free Run: set up all active voices with interval ratios
 			updateFreeRunVoices(pThis);
 		}
 		else if (pThis->gateMode == 2)
 		{
-			// CV: default amplitude to 80%
-			if (algIdx >= 0)
+			// CV: default amplitude to 80% (skip during initial param setup)
+			if (algIdx >= 0 && pThis->initialized)
 				NT_setParameterFromUi(algIdx, kParamAmplitude + offset, 80);
 			// CV: fully reset all voices so no Free Run state bleeds through
 			for (int v = 0; v < kMaxVoices; ++v)
@@ -1106,6 +1124,7 @@ void parameterChanged(_NT_algorithm* self, int p)
 		pThis->formantTrack = pThis->v[kParamFormantTrack];
 		break;
 	}
+
 }
 
 // ============================================================
@@ -1323,6 +1342,12 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	_pulsarAlgorithm* pThis = static_cast<_pulsarAlgorithm*>(self);
 	_pulsarDTC* dtc = pThis->dtc;
 	_pulsarDRAM* dram = pThis->dram;
+
+	// Mark initialization complete after first step — NT_setParameterFromUi
+	// is not safe to call from parameterChanged during the host's initial
+	// parameter setup loop (causes deadlock on firmware 1.15.0+)
+	if (!pThis->initialized)
+		pThis->initialized = true;
 
 	int numFrames = numFramesBy4 * 4;
 	if (numFrames < 1) return;
@@ -1915,9 +1940,10 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 					duty = vs.manualDuty[f];
 				}
 
-				if (phase < duty)
+				float dutyStart = (1.0f - duty) * 0.5f;
+				if (phase >= dutyStart && phase < dutyStart + duty)
 				{
-					float pulsaretPhase = phase / duty;
+					float pulsaretPhase = (phase - dutyStart) / duty;
 					float sample;
 
 					if (vs.useSample && pThis->sampleLoadedFrames >= 2)
@@ -2112,46 +2138,131 @@ bool draw(_NT_algorithm* self)
 	_pulsarDTC* dtc = pThis->dtc;
 	_pulsarDRAM* dram = pThis->dram;
 
-	// Waveform visualization: draw pulsaret * window shape
-	int waveX = 10;
-	int waveY = 30;
-	int waveW = 150;
-	int waveH = 24;
-
+	// Three separate waveform previews: pulsaret, window, duty cycle
 	float pulsaretIdx = pThis->displayPulsaretIdx;
 	float windowIdx = pThis->displayWindowIdx;
 	float duty = pThis->displayDuty;
 
-	// Draw bounding box
-	NT_drawShapeI(kNT_box, waveX - 1, waveY - waveH / 2 - 1, waveX + waveW + 1, waveY + waveH / 2 + 1, 3);
+	int viewW = 46;
+	int viewH = 20;
+	int viewY = 30;    // centerline Y
+	int gap = 4;
+	int x0_puls = 4;
+	int x0_win  = x0_puls + viewW + gap;
+	int x0_duty = x0_win  + viewW + gap;
 
-	int prevY = waveY;
-	for (int x = 0; x < waveW; ++x)
+	// --- Pulsaret preview ---
+	NT_drawShapeI(kNT_box, x0_puls - 1, viewY - viewH / 2 - 1,
+		x0_puls + viewW + 1, viewY + viewH / 2 + 1, 3);
 	{
-		float p = (float)x / (float)waveW;
-		float s = 0.0f;
-		if (p < duty)
+		float formantRatio = pThis->displayFormantHz[0] /
+			(dtc->voices[0].fundamentalHz > 0.1f ? dtc->voices[0].fundamentalHz : 0.1f);
+		int prevY = viewY;
+		for (int x = 0; x < viewW; ++x)
 		{
-			float pp = p / duty;
-			float formantRatio = pThis->displayFormantHz[0] / (dtc->voices[0].fundamentalHz > 0.1f ? dtc->voices[0].fundamentalHz : 0.1f);
-			float tp = pp * formantRatio;
+			float phase = (float)x / (float)viewW;
+			float tp = phase * formantRatio;
 			tp -= (int)tp;
 			if (tp < 0.0f) tp += 1.0f;
-			s = readTableMorph(dram->pulsaretTables, pulsaretIdx, tp);
-			s *= readWindowMorph(dram->windowTables, windowIdx, pp);
+			float s = readTableMorph(dram->pulsaretTables, pulsaretIdx, tp);
+			int pixY = viewY - (int)(s * viewH / 2);
+			if (x > 0)
+				NT_drawShapeI(kNT_line, x0_puls + x - 1, prevY, x0_puls + x, pixY, 15);
+			prevY = pixY;
 		}
-		int pixY = waveY - (int)(s * waveH / 2);
-		if (x > 0)
-			NT_drawShapeI(kNT_line, waveX + x - 1, prevY, waveX + x, pixY, 15);
-		prevY = pixY;
 	}
 
-	// Frequency readout (voice 0)
+	// --- Window preview ---
+	NT_drawShapeI(kNT_box, x0_win - 1, viewY - viewH / 2 - 1,
+		x0_win + viewW + 1, viewY + viewH / 2 + 1, 3);
+	{
+		int prevY = viewY;
+		for (int x = 0; x < viewW; ++x)
+		{
+			float phase = (float)x / (float)viewW;
+			float s = readWindowMorph(dram->windowTables, windowIdx, phase);
+			int pixY = viewY - (int)(s * viewH / 2);
+			if (x > 0)
+				NT_drawShapeI(kNT_line, x0_win + x - 1, prevY, x0_win + x, pixY, 15);
+			prevY = pixY;
+		}
+	}
+
+	// --- Duty cycle preview (pulsaret * window, centered in period) ---
+	NT_drawShapeI(kNT_box, x0_duty - 1, viewY - viewH / 2 - 1,
+		x0_duty + viewW + 1, viewY + viewH / 2 + 1, 3);
+	{
+		float dutyStart = (1.0f - duty) * 0.5f;
+		float formantRatio = pThis->displayFormantHz[0] /
+			(dtc->voices[0].fundamentalHz > 0.1f ? dtc->voices[0].fundamentalHz : 0.1f);
+		int prevY = viewY;
+		for (int x = 0; x < viewW; ++x)
+		{
+			float p = (float)x / (float)viewW;
+			float s = 0.0f;
+			if (p >= dutyStart && p < dutyStart + duty)
+			{
+				float pp = (p - dutyStart) / duty;
+				float tp = pp * formantRatio;
+				tp -= (int)tp;
+				if (tp < 0.0f) tp += 1.0f;
+				s = readTableMorph(dram->pulsaretTables, pulsaretIdx, tp);
+				s *= readWindowMorph(dram->windowTables, windowIdx, pp);
+			}
+			int pixY = viewY - (int)(s * viewH / 2);
+			if (x > 0)
+				NT_drawShapeI(kNT_line, x0_duty + x - 1, prevY, x0_duty + x, pixY, 15);
+			prevY = pixY;
+		}
+	}
+
+	// Layout refs for elements below the views
+	int waveX = x0_puls;
+	int waveW = x0_duty + viewW - x0_puls;
+	int waveY = viewY;
+	int waveH = viewH;
+
+	// Frequency readout (voice 0) + chord type on same line
+	int infoX = waveX + waveW + 8;
+	int freqY = waveY - 8;
 	char buf[32];
 	int len = NT_floatToString(buf, dtc->voices[0].fundamentalHz, 1);
-	buf[len] = 0;
-	NT_drawText(waveX + waveW + 8, waveY - 8, buf, 15, kNT_textLeft, kNT_textTiny);
-	NT_drawText(waveX + waveW + 8, waveY, "Hz", 10, kNT_textLeft, kNT_textTiny);
+	buf[len] = ' '; buf[len+1] = 'H'; buf[len+2] = 'z'; buf[len+3] = 0;
+	NT_drawText(infoX, freqY, buf, 15, kNT_textLeft, kNT_textTiny);
+
+	// Chord type label (right of frequency, Free Run mode)
+	if (pThis->v[kParamGateMode] == 1)
+	{
+		static const char* chordLabels[] = {
+			"UNI", "OCT", "5TH", "SUB",
+			"MAJ", "MIN", "MA7", "MI7",
+			"SU4", "DM7", "DIM", "AUG",
+			"PWR", "OP5"
+		};
+		int ct = pThis->chordType;
+		int bright = (pThis->voiceCount > 1) ? 10 : 4;
+		if (ct >= 0 && ct < kNumChordTypes)
+		{
+			int freqTextW = (len + 3) * 4; // kNT_textTiny ~4px per char
+			NT_drawText(infoX + freqTextW + 4, freqY, chordLabels[ct], bright, kNT_textLeft, kNT_textTiny);
+		}
+	}
+
+	// Amplitude readout (directly beneath frequency)
+	{
+		char abuf[16];
+		int aLen = NT_floatToString(abuf, pThis->displayAmplitude * 100.0f, 0);
+		abuf[aLen] = '%'; abuf[aLen + 1] = 0;
+		NT_drawText(infoX, waveY, abuf, 10, kNT_textLeft, kNT_textTiny);
+	}
+
+	// Drive readout (beneath amplitude)
+	{
+		char dbuf[16];
+		int dLen = NT_floatToString(dbuf, pThis->drive * 100.0f, 0);
+		dbuf[dLen] = '%'; dbuf[dLen + 1] = ' '; dbuf[dLen + 2] = 'D'; dbuf[dLen + 3] = 0;
+		NT_drawText(infoX, waveY + 8, dbuf, (pThis->drive > 1.0f) ? 10 : 6, kNT_textLeft, kNT_textTiny);
+	}
 
 	// Envelope level bar (max envelope across all voices)
 	int barX = waveX + waveW + 8;
@@ -2190,21 +2301,6 @@ bool draw(_NT_algorithm* self)
 	else if (pThis->v[kParamGateMode] == 2)
 		NT_drawText(barX + barW + 12, barY, "CV", 15, kNT_textLeft, kNT_textTiny);
 
-	// Chord type label (Free Run mode, dimmed when only 1 voice)
-	if (pThis->v[kParamGateMode] == 1)
-	{
-		static const char* chordLabels[] = {
-			"UNI", "OCT", "5TH", "SUB",
-			"MAJ", "MIN", "MA7", "MI7",
-			"SU4", "DM7", "DIM", "AUG",
-			"PWR", "OP5"
-		};
-		int ct = pThis->chordType;
-		int bright = (pThis->voiceCount > 1) ? 10 : 4;
-		if (ct >= 0 && ct < kNumChordTypes)
-			NT_drawText(barX + barW + 12, barY + barH + 4, chordLabels[ct], bright, kNT_textLeft, kNT_textTiny);
-	}
-
 	// Peak output level bar (shows if synthesis is producing signal)
 	int pkBarX = waveX;
 	int pkBarY = waveY + waveH / 2 + 4;
@@ -2240,18 +2336,12 @@ bool draw(_NT_algorithm* self)
 			NT_drawText(xPos + 16, fmtY, fbuf, brightness, kNT_textLeft, kNT_textTiny);
 		}
 
-		// Amplitude readout (right side, below envelope bar)
-		int aLen = NT_floatToString(fbuf, pThis->displayAmplitude * 100.0f, 0);
-		fbuf[aLen] = '%';
-		fbuf[aLen + 1] = 0;
-		NT_drawText(barX, barY + barH + 4, fbuf, 10, kNT_textLeft, kNT_textTiny);
-
 		// CPU load readout (bottom right)
 		{
 			char cpuBuf[16];
 			cpuBuf[0] = 'C'; cpuBuf[1] = 'P'; cpuBuf[2] = 'U'; cpuBuf[3] = ':';
 			int cl = NT_floatToString(cpuBuf + 4, pThis->displayCpuPercent, 1);
-			cpuBuf[4+cl]=' '; cpuBuf[5+cl]='p'; cpuBuf[6+cl]='c'; cpuBuf[7+cl]='t'; cpuBuf[8+cl]='.'; cpuBuf[9+cl]=0;
+			cpuBuf[4+cl] = 0;
 			NT_drawText(barX, fmtY, cpuBuf, 6, kNT_textLeft, kNT_textTiny);
 		}
 	}
@@ -2361,6 +2451,8 @@ static const _NT_factory factory =
 	.name = "Spaluter",
 	.description = "Pulsar synthesis with formants, masking, and CV",
 	.numSpecifications = 0,
+	.calculateStaticRequirements = calculateStaticRequirements,
+	.initialise = initialise,
 	.calculateRequirements = calculateRequirements,
 	.construct = construct,
 	.parameterChanged = parameterChanged,
