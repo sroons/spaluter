@@ -62,17 +62,17 @@ Roads also introduced **masking** — selectively muting pulses within the train
 - **Timing jitter** — per-pulse random period variation (0–100%) for analog-like pitch drift; with multiple voices in unison, each drifts independently for natural chorus effects
 - **Glisson** — per-pulse micro-glissando sweeps pitch within each pulsaret (±2 octaves), from subtle shimmer to dramatic laser chirps
 - **Formant frequency tracking** — scales formant frequencies with voice pitch, preserving spectral shape across the keyboard instead of the default fixed-formant behavior
-- **1–4 voice polyphony** — three modes: MIDI chords with voice stealing, Free Run interval stacking with 14 chord types, or CV gate+pitch triggering with overlapping releases
+- **1–4 voice polyphony** — three modes: MIDI chords with voice stealing, Free Run interval stacking with 14 chord types, or CV trigger+pitch triggering with overlapping releases
 - **14 chord types** — Unison, Octaves, Fifths, Sub+Oct, Major, Minor, Maj7, Min7, Sus4, Dom7, Dim, Aug, Power, Open5th — for Free Run interval stacking
-- **Free Run mode** (default) — generates sound immediately without MIDI; pitch set by Base Pitch parameter + Pitch CV; per-pulse AR envelope retriggers on every pulse
-- **CV mode** — Rings-style polyphonic triggering from a single gate+pitch CV pair: each rising edge allocates a new voice while previous voices ring out through their release envelopes with frozen parameters, so only the newest voice responds to knob/CV changes
+- **CV mode** (default) — Rings-style polyphonic triggering from a single trigger+pitch CV pair: each rising edge allocates a new voice while previous voices ring out through their release envelopes with frozen parameters, so only the newest voice responds to knob/CV changes
+- **Free Run mode** — generates sound immediately without MIDI; pitch set by Base Pitch parameter + Pitch CV; per-pulse AR envelope retriggers on every pulse
 - **Per-pulse AR envelope** in Free Run mode (retriggers each pulse, release at period midpoint); standard ASR in MIDI and CV modes
-- **15 bipolar CV inputs** — pitch (1V/oct), duty, mask, pulsaret morph, window morph, amplitude, formant 1/2/3 Hz, pan 1, attack, release, amp jitter, timing jitter, glisson — first 12 inputs assigned by default, effects CVs default to none
+- **15 bipolar CV inputs** — pitch (1V/oct), trigger, duty, mask, pulsaret morph, window morph, formant 1/2/3 Hz, attack, release, glisson — first 12 inputs assigned by default; amplitude, pan, amp jitter, timing jitter CVs default to none
 - **Sub-octave output** — stereo octave-down via analog-style frequency divider, routable to any bus for layering a sub one octave below the fundamental
 - **Aux outputs** — pulse trigger, envelope follower, and pre-clip stereo taps — all bus-routable, disabled by default
 - **Sample-based pulsarets** — load WAV files from SD card as custom pulsaret waveforms with adjustable playback rate
 - **Centered duty cycle** — active pulsaret is centered in the period with equal silence gaps before and after, producing symmetrical spectral sidebands
-- **Real-time display** — three separate waveform views (pulsaret, window, duty cycle), formant Hz readouts, amplitude %, drive %, envelope bar, frequency readout, gate indicator, peak output meter
+- **Real-time display** — three separate waveform views (pulsaret, window, duty cycle), formant Hz readouts, amplitude %, drive %, envelope bar, frequency readout, trigger indicator, peak output meter
 
 ## Parameters
 
@@ -80,12 +80,12 @@ Roads also introduced **masking** — selectively muting pulses within the train
 
 | Page | Parameter | Range | Default |
 |------|-----------|-------|---------|
-| **Mode** | Gate Mode | MIDI / Free Run / CV | Free Run |
+| **Mode** | Gate Mode | MIDI / Free Run / CV | CV |
 | | Voice Count | 1–4 | 1 |
 | | Chord Type | 14 types (see Polyphony section) | Unison |
 | | MIDI Ch | 1–16 | 1 |
 | | Base Pitch | MIDI note 0–127 | C1 (24) |
-| **Level** | Amplitude | 0–200% | 0% |
+| **Level** | Amplitude | 0–200% | 100% |
 | | Drive | 100–400% | 100% |
 | | Attack | 0.1–2000 ms | 10 ms |
 | | Release | 1.0–3200 ms | 200 ms |
@@ -133,20 +133,21 @@ All CV inputs are **bipolar** (±5V). Each is routable to any of the 64 buses (1
 | CV Input | Default Bus | Scaling | Effect |
 |----------|-------------|---------|--------|
 | Pitch CV | Input 1 | 1V/oct exponential | Per-sample pitch modulation |
+| Trigger CV | Input 2 | >2.5V = high | Trigger input for CV mode voice allocation |
 | Duty CV | Input 3 | ±5V → ±20% offset | Duty cycle offset added to base |
 | Mask CV | Input 4 | ±5V → ±50% offset | Mask amount offset (bipolar) |
 | Pulsaret CV | Input 5 | ±5V → full range | Sweeps pulsaret morph ±4.5 |
 | Window CV | Input 6 | ±5V → full range | Sweeps window morph ±2.0 |
-| Amplitude CV | Input 2 | ±5V → ±50% offset | Amplitude offset added to base |
 | Formant 1 CV | Input 7 | ±5V → ±1000 Hz | Formant 1 frequency offset |
 | Formant 2 CV | Input 8 | ±5V → ±1000 Hz | Formant 2 frequency offset |
 | Formant 3 CV | Input 9 | ±5V → ±1000 Hz | Formant 3 frequency offset |
-| Pan 1 CV | Input 10 | ±5V → ±100% offset | Formant 1 stereo pan position |
-| Attack CV | Input 11 | ±5V → ±1000 ms | Envelope attack time offset |
-| Release CV | Input 12 | ±5V → ±1600 ms | Envelope release time offset |
+| Attack CV | Input 10 | ±5V → ±1000 ms | Envelope attack time offset |
+| Release CV | Input 11 | ±5V → ±1600 ms | Envelope release time offset |
+| Glisson CV | Input 12 | ±5V → ±2.0 oct | Glisson depth offset |
+| Amplitude CV | 0 (none) | ±5V → ±50% offset | Amplitude offset added to base |
+| Pan 1 CV | 0 (none) | ±5V → ±100% offset | Formant 1 stereo pan position |
 | Amp Jit CV | 0 (none) | ±5V → ±50% offset | Amp jitter amount offset |
 | Time Jit CV | 0 (none) | ±5V → ±50% offset | Timing jitter amount offset |
-| Glisson CV | 0 (none) | ±5V → ±2.0 oct | Glisson depth offset |
 
 CV modulation is applied as an offset on top of the parameter's base value (set by knob or parameter page). All CVs except Pitch are block-rate averaged. Pitch CV is processed per-sample for accurate 1V/oct tracking.
 
@@ -156,7 +157,7 @@ CV modulation is applied as an offset on top of the parameter's base value (set 
 Pitch Source:
   MIDI mode:    MIDI note + Pitch CV
   Free Run:     Base Pitch × Chord Ratio + Pitch CV
-  CV mode:      Base Pitch × Pitch CV (captured per voice at gate trigger)
+  CV mode:      Base Pitch × Pitch CV (captured per voice at trigger)
 
 → Frequency (with glide)
 → For each voice (1–4):
@@ -180,20 +181,18 @@ Pitch Source:
 
 ## CV Mode (Rings-style Voice Triggering)
 
-Polyphonic voice triggering from a single gate+pitch CV pair, inspired by Mutable Instruments Rings. Each gate rising edge allocates a new voice while previous voices ring out through their release envelopes — up to 4 simultaneous voices.
+Polyphonic voice triggering from a single trigger+pitch CV pair, inspired by Mutable Instruments Rings. Each trigger rising edge allocates a new voice while previous voices ring out through their release envelopes — up to 4 simultaneous voices.
 
 ### Setup
 
-1. Set **Gate Mode** to **CV** (Mode page)
-2. Set **Gate CV** to your gate input bus (CV Inputs page)
-3. Set **Pitch CV** to your 1V/oct pitch input bus (CV Inputs page, default: input 1)
-4. Set **Amplitude** above 0% and adjust **Attack**/**Release** (Level page)
-
-> **Tip:** If your gate bus is already assigned to another CV parameter (e.g., Amplitude CV defaults to bus 2), set that CV to **0 (none)** to prevent the gate signal from being read as modulation.
+1. Set **Gate Mode** to **CV** (Mode page) — this is the default
+2. Patch a trigger/gate signal into **Input 2** (Trigger CV, default bus)
+3. Patch a 1V/oct pitch source into **Input 1** (Pitch CV, default bus)
+4. Adjust **Attack**/**Release** on the Level page — Amplitude defaults to 100%
 
 ### Behavior
 
-| Gate state | What happens |
+| Trigger state | What happens |
 |---|---|
 | **Rising edge** | Allocates a voice, captures pitch from Base Pitch × Pitch CV, starts attack |
 | **Held high** | Active voice tracks Pitch CV in real time (pitch bends) |
@@ -222,27 +221,25 @@ Spaluter should now appear as an available plugin to load.
 
 ## Getting Sound
 
-Spaluter starts silent — amplitude defaults to 0%. Two ways to get sound:
+Spaluter defaults to CV mode at 100% amplitude — patch a trigger and pitch to start playing immediately.
 
 ### Option A: Use CV inputs (recommended)
 
 Spaluter is designed to be played via CV. At minimum, patch into:
 
 1. **Input 1** (Pitch CV) — a 1V/oct pitch source (sequencer, keyboard, etc.) controls the fundamental frequency
-2. **Input 2** (Amplitude CV) — a bipolar signal (envelope, LFO, etc.) controls the output level. Positive voltage opens up the amplitude; at +5V you get 50% amplitude
+2. **Input 2** (Trigger CV) — a gate/trigger signal to trigger voices
 
-With just these two patched, you'll hear sound. The other 10 default CV inputs add further modulation when patched.
+With just these two patched, each trigger allocates a voice at the current pitch. The other 10 default CV inputs add further modulation when patched.
 
-### Option B: Set parameters manually
+### Option B: Switch to Free Run mode
 
 If you want sound without any CV patched:
 
-1. Navigate to the **Level** page
-2. Raise **Amplitude** above 0% (try 50–80%)
-3. Sound will begin immediately in Free Run mode at the default pitch (C1, ~32.7 Hz)
+1. Navigate to the **Mode** page
+2. Switch **Gate Mode** to **Free Run**
+3. Sound will begin immediately at the default pitch (C1, ~32.7 Hz)
 4. Adjust **Base Pitch** on the **Mode** page to change the fundamental frequency
-
-You can combine both approaches — set a base amplitude manually and let CV modulate it further.
 
 ## Building from Source
 
@@ -315,7 +312,7 @@ The custom display (256×64 px) shows three real-time waveform views and synthes
 - **Drive %** — drive amount (dimmed at 100%, brighter when boosted)
 - **Formant count + voice count** — "2F 4V"
 - **Envelope bar** — max envelope across all voices
-- **Gate indicator** — lit when any voice gate is open
+- **Trigger indicator** — lit when any voice is triggered
 - **Mode label** — "FR" in Free Run mode, "CV" in CV mode
 - **Peak output meter** — spans all three views, shows output level
 - **F1/F2/F3 Hz readouts** — formant frequencies after CV modulation (inactive formants dimmed)
@@ -324,14 +321,14 @@ The custom display (256×64 px) shows three real-time waveform views and synthes
 ## Usage
 
 1. Add the **Spaluter** algorithm to a slot on the disting NT
-2. Patch a signal into **Input 2** (Amplitude CV) or raise **Amplitude** on the **Level** page — the plugin starts silent by default
+2. Patch a trigger into **Input 2** (Trigger CV) and a pitch source into **Input 1** (Pitch CV) — amplitude defaults to 100% in CV mode
 3. Shape the sound on the **Waveform** page by sweeping Pulsaret and Window morphing controls (or use the pots)
 4. Add parallel formants on the **Formants** page and spread them with **Panning**
 5. Create rhythmic textures with **Texture** (stochastic or burst masking, amp/timing jitter, glisson)
 6. Patch CV sources into any of the 15 inputs — first 12 are assigned by default, effects CVs on a separate page
 7. Add voices on the **Mode** page — in Free Run mode, choose a **Chord Type** to stack intervals; in MIDI mode, play chords
 8. For MIDI control, switch **Gate Mode** to MIDI on the **Mode** page and set your MIDI channel
-9. For CV voice triggering, switch **Gate Mode** to CV, set **Gate CV** on the **CV Inputs** page — see [CV Mode](#cv-mode-rings-style-voice-triggering) for full setup
+9. For CV voice triggering, switch **Gate Mode** to CV, set **Trigger CV** on the **CV Inputs** page — see [CV Mode](#cv-mode-rings-style-voice-triggering) for full setup
 10. Optionally load a WAV file from the SD card as a custom pulsaret waveform on the **Sample** page
 
 ## Sound Design Tips

@@ -351,7 +351,7 @@ static const _NT_parameter parametersDefault[] = {
 	// Envelope page
 	{ .name = "Attack",      .min = 1,   .max = 20000, .def = 100, .unit = kNT_unitMs,      .scaling = kNT_scaling10, .enumStrings = NULL },
 	{ .name = "Release",     .min = 10,  .max = 32000, .def = 2000,.unit = kNT_unitMs,      .scaling = kNT_scaling10, .enumStrings = NULL },
-	{ .name = "Amplitude",   .min = 0,   .max = 200,   .def = 0,   .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
+	{ .name = "Amplitude",   .min = 0,   .max = 200,   .def = 100, .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
 	{ .name = "Drive",       .min = 100, .max = 400,   .def = 100, .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
 	{ .name = "Glide",       .min = 0,   .max = 20000, .def = 0,   .unit = kNT_unitMs,      .scaling = kNT_scaling10, .enumStrings = NULL },
 
@@ -368,26 +368,26 @@ static const _NT_parameter parametersDefault[] = {
 
 	// CV Inputs page 1
 	NT_PARAMETER_CV_INPUT( "Pitch CV",       0, 1 )
-	NT_PARAMETER_CV_INPUT( "Amplitude CV",   0, 2 )
-	NT_PARAMETER_CV_INPUT( "Duty CV",        0, 4 )
-	NT_PARAMETER_CV_INPUT( "Mask CV",        0, 5 )
+	NT_PARAMETER_CV_INPUT( "Amplitude CV",   0, 0 )
+	NT_PARAMETER_CV_INPUT( "Duty CV",        0, 3 )
+	NT_PARAMETER_CV_INPUT( "Mask CV",        0, 4 )
 
 	// CV Inputs page 2
-	NT_PARAMETER_CV_INPUT( "Pulsaret CV",    0, 6 )
-	NT_PARAMETER_CV_INPUT( "Window CV",      0, 7 )
-	NT_PARAMETER_CV_INPUT( "Gate CV",        0, 3 )
+	NT_PARAMETER_CV_INPUT( "Pulsaret CV",    0, 5 )
+	NT_PARAMETER_CV_INPUT( "Window CV",      0, 6 )
+	NT_PARAMETER_CV_INPUT( "Trigger CV",     0, 2 )
 
 	// CV Inputs page 3
-	NT_PARAMETER_CV_INPUT( "Formant 1 CV",   0, 8 )
-	NT_PARAMETER_CV_INPUT( "Formant 2 CV",   0, 9 )
-	NT_PARAMETER_CV_INPUT( "Formant 3 CV",   0, 10 )
+	NT_PARAMETER_CV_INPUT( "Formant 1 CV",   0, 7 )
+	NT_PARAMETER_CV_INPUT( "Formant 2 CV",   0, 8 )
+	NT_PARAMETER_CV_INPUT( "Formant 3 CV",   0, 9 )
 
 	// CV Inputs page 4
 	NT_PARAMETER_CV_INPUT( "Pan 1 CV",       0, 0 )
 	NT_PARAMETER_CV_INPUT( "Pan 2 CV",       0, 0 )
 	NT_PARAMETER_CV_INPUT( "Pan 3 CV",       0, 0 )
-	NT_PARAMETER_CV_INPUT( "Attack CV",      0, 11 )
-	NT_PARAMETER_CV_INPUT( "Release CV",     0, 12 )
+	NT_PARAMETER_CV_INPUT( "Attack CV",      0, 10 )
+	NT_PARAMETER_CV_INPUT( "Release CV",     0, 11 )
 
 	// Routing page
 	{ .name = "MIDI Ch",     .min = 1,   .max = 16,    .def = 1,   .unit = kNT_unitNone,    .scaling = kNT_scalingNone, .enumStrings = NULL },
@@ -395,7 +395,7 @@ static const _NT_parameter parametersDefault[] = {
 	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Output R", 1, 14 )
 
 	// Gate mode (must be at end of routing to match enum order)
-	{ .name = "Gate Mode",   .min = 0,   .max = 2,     .def = 1,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumGateMode },
+	{ .name = "Gate Mode",   .min = 0,   .max = 2,     .def = 2,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumGateMode },
 	{ .name = "Base Pitch",  .min = 0,   .max = 127,   .def = 24,  .unit = kNT_unitMIDINote, .scaling = kNT_scalingNone, .enumStrings = NULL },
 
 	// Polyphony page
@@ -405,7 +405,7 @@ static const _NT_parameter parametersDefault[] = {
 	// CV Effects page
 	NT_PARAMETER_CV_INPUT( "Amp Jit CV",     0, 0 )
 	NT_PARAMETER_CV_INPUT( "Time Jit CV",    0, 0 )
-	NT_PARAMETER_CV_INPUT( "Glisson CV",     0, 0 )
+	NT_PARAMETER_CV_INPUT( "Glisson CV",     0, 12 )
 
 	// Effects page
 	{ .name = "Amp Jitter",    .min = 0,    .max = 100,  .def = 0,   .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
@@ -1079,17 +1079,11 @@ void parameterChanged(_NT_algorithm* self, int p)
 		}
 		if (pThis->gateMode == 1)
 		{
-			// Free Run: default amplitude to 0% (skip during initial param setup)
-			if (algIdx >= 0 && pThis->initialized)
-				NT_setParameterFromUi(algIdx, kParamAmplitude + offset, 0);
 			// Free Run: set up all active voices with interval ratios
 			updateFreeRunVoices(pThis);
 		}
 		else if (pThis->gateMode == 2)
 		{
-			// CV: default amplitude to 80% (skip during initial param setup)
-			if (algIdx >= 0 && pThis->initialized)
-				NT_setParameterFromUi(algIdx, kParamAmplitude + offset, 80);
 			// CV: fully reset all voices so no Free Run state bleeds through
 			for (int v = 0; v < kMaxVoices; ++v)
 			{
@@ -2182,11 +2176,17 @@ bool draw(_NT_algorithm* self)
 
 	int viewW = 46;
 	int viewH = 20;
-	int viewY = 30;    // centerline Y
+	int viewY = 38;    // centerline Y
 	int gap = 4;
 	int x0_puls = 4;
 	int x0_win  = x0_puls + viewW + gap;
 	int x0_duty = x0_win  + viewW + gap;
+
+	// Labels above waveform boxes (tiny font, dim)
+	int labelY = viewY - viewH / 2 - 8;
+	NT_drawText(x0_puls, labelY, "PULSARET", 5, kNT_textLeft, kNT_textTiny);
+	NT_drawText(x0_win, labelY, "WINDOW", 5, kNT_textLeft, kNT_textTiny);
+	NT_drawText(x0_duty, labelY, "DUTY", 5, kNT_textLeft, kNT_textTiny);
 
 	// --- Pulsaret preview ---
 	NT_drawShapeI(kNT_box, x0_puls - 1, viewY - viewH / 2 - 1,
