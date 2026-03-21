@@ -47,7 +47,7 @@
 // ============================================================
 static const int kTableSize = 2048;         // Samples per waveform/window table
 static const int kNumPulsarets = 10;        // Number of pulsaret waveforms
-static const int kNumWindows = 5;           // Number of window functions
+static const int kNumWindows = 9;           // Number of window functions
 static const int kSampleBufferSize = 48000; // Max sample frames (1 sec at 48kHz)
 
 // ============================================================
@@ -57,7 +57,7 @@ static const int kSampleBufferSize = 48000; // Max sample frames (1 sec at 48kHz
 // DRAM: large pre-computed lookup tables and sample buffer (~312 KB)
 struct _pulsarDRAM {
 	float pulsaretTables[kNumPulsarets][kTableSize]; // 10 waveforms: sine, sine×2, sine×3, sinc, tri, saw, square, formant, pulse, noise
-	float windowTables[kNumWindows][kTableSize];     // 5 windows: rectangular, gaussian, hann, exp decay, linear decay
+	float windowTables[kNumWindows][kTableSize];     // 9 windows: rect, gaussian, hann, exp decay, lin decay, tukey, blackman-harris, rev exp, triangle, sinc
 	float sampleBuffer[kSampleBufferSize];           // WAV sample data for sample-based pulsarets
 };
 
@@ -192,13 +192,14 @@ enum {
 
 	// -- CV Inputs page 1 --
 	kParamPitchCV,      // Bus selector: 1V/oct pitch modulation (per-sample)
+	kParamAmplitudeCV,  // Bus selector: bipolar ±5V → ±50% amplitude offset
 	kParamDutyCV,       // Bus selector: bipolar ±5V → ±20% duty offset
 	kParamMaskCV,       // Bus selector: bipolar ±5V → ±50% mask amount offset
 
 	// -- CV Inputs page 2 --
 	kParamPulsaretCV,   // Bus selector: bipolar ±5V → full range sweep
 	kParamWindowCV,     // Bus selector: bipolar ±5V → full range sweep
-	kParamAmplitudeCV,  // Bus selector: bipolar ±5V → ±50% amplitude offset
+	kParamGateCV,       // Bus selector: gate input (>2.5V = high)
 
 	// -- CV Inputs page 3 --
 	kParamFormant1CV,   // Bus selector: bipolar ±5V → ±4000 Hz offset
@@ -207,6 +208,8 @@ enum {
 
 	// -- CV Inputs page 4 --
 	kParamPan1CV,       // Bus selector: bipolar ±5V → ±100% pan offset
+	kParamPan2CV,       // Bus selector: bipolar ±5V → ±100% pan offset
+	kParamPan3CV,       // Bus selector: bipolar ±5V → ±100% pan offset
 	kParamAttackCV,     // Bus selector: bipolar ±5V → ±1000 ms attack offset
 	kParamReleaseCV,    // Bus selector: bipolar ±5V → ±1600 ms release offset
 
@@ -223,9 +226,6 @@ enum {
 	// -- Polyphony page --
 	kParamVoiceCount,   // 1–4: number of simultaneous voices
 	kParamChordType,    // Enum: chord/interval type for Free Run mode
-
-	// -- CV Voice page --
-	kParamGateCV,       // Bus selector: gate input (>2.5V = high)
 
 	// -- CV Effects page --
 	kParamAmpJitterCV,  // Bus selector: bipolar ±5V → ±50% amp jitter offset
@@ -332,7 +332,7 @@ static void initChordRatios()
 static const _NT_parameter parametersDefault[] = {
 	// Synthesis page
 	{ .name = "Pulsaret",    .min = 0,   .max = 90,    .def = 25,  .unit = kNT_unitNone,    .scaling = kNT_scaling10, .enumStrings = NULL },
-	{ .name = "Window",      .min = 0,   .max = 40,    .def = 5,   .unit = kNT_unitNone,    .scaling = kNT_scaling10, .enumStrings = NULL },
+	{ .name = "Window",      .min = 0,   .max = 80,    .def = 5,   .unit = kNT_unitNone,    .scaling = kNT_scaling10, .enumStrings = NULL },
 	{ .name = "Duty Cycle",  .min = 1,   .max = 100,   .def = 50,  .unit = kNT_unitPercent, .scaling = kNT_scalingNone, .enumStrings = NULL },
 	{ .name = "Duty Mode",   .min = 0,   .max = 1,     .def = 0,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumDutyMode },
 
@@ -368,21 +368,24 @@ static const _NT_parameter parametersDefault[] = {
 
 	// CV Inputs page 1
 	NT_PARAMETER_CV_INPUT( "Pitch CV",       0, 1 )
-	NT_PARAMETER_CV_INPUT( "Duty CV",        0, 3 )
-	NT_PARAMETER_CV_INPUT( "Mask CV",        0, 4 )
+	NT_PARAMETER_CV_INPUT( "Amplitude CV",   0, 2 )
+	NT_PARAMETER_CV_INPUT( "Duty CV",        0, 4 )
+	NT_PARAMETER_CV_INPUT( "Mask CV",        0, 5 )
 
 	// CV Inputs page 2
-	NT_PARAMETER_CV_INPUT( "Pulsaret CV",    0, 5 )
-	NT_PARAMETER_CV_INPUT( "Window CV",      0, 6 )
-	NT_PARAMETER_CV_INPUT( "Amplitude CV",   0, 2 )
+	NT_PARAMETER_CV_INPUT( "Pulsaret CV",    0, 6 )
+	NT_PARAMETER_CV_INPUT( "Window CV",      0, 7 )
+	NT_PARAMETER_CV_INPUT( "Gate CV",        0, 3 )
 
 	// CV Inputs page 3
-	NT_PARAMETER_CV_INPUT( "Formant 1 CV",   0, 7 )
-	NT_PARAMETER_CV_INPUT( "Formant 2 CV",   0, 8 )
-	NT_PARAMETER_CV_INPUT( "Formant 3 CV",   0, 9 )
+	NT_PARAMETER_CV_INPUT( "Formant 1 CV",   0, 8 )
+	NT_PARAMETER_CV_INPUT( "Formant 2 CV",   0, 9 )
+	NT_PARAMETER_CV_INPUT( "Formant 3 CV",   0, 10 )
 
 	// CV Inputs page 4
-	NT_PARAMETER_CV_INPUT( "Pan 1 CV",       0, 10 )
+	NT_PARAMETER_CV_INPUT( "Pan 1 CV",       0, 0 )
+	NT_PARAMETER_CV_INPUT( "Pan 2 CV",       0, 0 )
+	NT_PARAMETER_CV_INPUT( "Pan 3 CV",       0, 0 )
 	NT_PARAMETER_CV_INPUT( "Attack CV",      0, 11 )
 	NT_PARAMETER_CV_INPUT( "Release CV",     0, 12 )
 
@@ -398,9 +401,6 @@ static const _NT_parameter parametersDefault[] = {
 	// Polyphony page
 	{ .name = "Voice Count", .min = 1,   .max = 4,     .def = 1,   .unit = kNT_unitNone,    .scaling = kNT_scalingNone, .enumStrings = NULL },
 	{ .name = "Chord Type",  .min = 0,   .max = 13,    .def = 0,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumChordType },
-
-	// CV Voice page
-	NT_PARAMETER_CV_INPUT( "Gate CV",        0, 0 )
 
 	// CV Effects page
 	NT_PARAMETER_CV_INPUT( "Amp Jit CV",     0, 0 )
@@ -440,7 +440,7 @@ static const uint8_t pageAuxOut[]    = { kParamTriggerOut, kParamTriggerOutMode,
 static const uint8_t pageCV1[]       = { kParamPitchCV, kParamAmplitudeCV, kParamDutyCV, kParamMaskCV };
 static const uint8_t pageCV2[]       = { kParamPulsaretCV, kParamWindowCV, kParamGateCV };
 static const uint8_t pageCV3[]       = { kParamFormant1CV, kParamFormant2CV, kParamFormant3CV };
-static const uint8_t pageCV4[]       = { kParamPan1CV, kParamAttackCV, kParamReleaseCV };
+static const uint8_t pageCV4[]       = { kParamPan1CV, kParamPan2CV, kParamPan3CV, kParamAttackCV, kParamReleaseCV };
 static const uint8_t pageCV5[]       = { kParamAmpJitterCV, kParamTimingJitterCV, kParamGlissonCV };
 
 static const _NT_parameterPage pages[] = {
@@ -661,6 +661,29 @@ static void generateWindowTables(float tables[][kTableSize])
 
 		// 4: linear decay
 		tables[4][i] = 1.0f - p;
+
+		// 5: tukey (tapered cosine, alpha=0.5 — flat top with smooth edges)
+		{
+			float alpha = 0.5f;
+			if (p < alpha * 0.5f)
+				tables[5][i] = 0.5f * (1.0f - cosf(2.0f * (float)M_PI * p / alpha));
+			else if (p > 1.0f - alpha * 0.5f)
+				tables[5][i] = 0.5f * (1.0f - cosf(2.0f * (float)M_PI * (1.0f - p) / alpha));
+			else
+				tables[5][i] = 1.0f;
+		}
+
+		// 6: blackman-harris (4-term, very low sidelobes)
+		{
+			float tp = 2.0f * (float)M_PI * p;
+			tables[6][i] = 0.35875f - 0.48829f * cosf(tp) + 0.14128f * cosf(2.0f * tp) - 0.01168f * cosf(3.0f * tp);
+		}
+
+		// 7: reverse exponential (slow swell to sharp cutoff)
+		tables[7][i] = expf(-4.0f * (1.0f - p));
+
+		// 8: triangle
+		tables[8][i] = (p < 0.5f) ? (2.0f * p) : (2.0f * (1.0f - p));
 	}
 }
 
@@ -1440,6 +1463,8 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	float* cvFormant2 = NULL;
 	float* cvFormant3 = NULL;
 	float* cvPan1 = NULL;
+	float* cvPan2 = NULL;
+	float* cvPan3 = NULL;
 	float* cvAttack = NULL;
 	float* cvRelease = NULL;
 	if (pThis->v[kParamPitchCV] > 0)
@@ -1462,6 +1487,10 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		cvFormant3 = busFrames + (pThis->v[kParamFormant3CV] - 1) * numFrames;
 	if (pThis->v[kParamPan1CV] > 0)
 		cvPan1 = busFrames + (pThis->v[kParamPan1CV] - 1) * numFrames;
+	if (pThis->v[kParamPan2CV] > 0)
+		cvPan2 = busFrames + (pThis->v[kParamPan2CV] - 1) * numFrames;
+	if (pThis->v[kParamPan3CV] > 0)
+		cvPan3 = busFrames + (pThis->v[kParamPan3CV] - 1) * numFrames;
 	if (pThis->v[kParamAttackCV] > 0)
 		cvAttack = busFrames + (pThis->v[kParamAttackCV] - 1) * numFrames;
 	if (pThis->v[kParamReleaseCV] > 0)
@@ -1519,6 +1548,8 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	float cvFormant2Avg = 0.0f;
 	float cvFormant3Avg = 0.0f;
 	float cvPan1Avg = 0.0f;
+	float cvPan2Avg = 0.0f;
+	float cvPan3Avg = 0.0f;
 	float cvAttackAvg = 0.0f;
 	float cvReleaseAvg = 0.0f;
 	float cvAmpJitterAvg = 0.0f;
@@ -1536,6 +1567,8 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 			if (cvFormant2) cvFormant2Avg += cvFormant2[i];
 			if (cvFormant3) cvFormant3Avg += cvFormant3[i];
 			if (cvPan1) cvPan1Avg += cvPan1[i];
+			if (cvPan2) cvPan2Avg += cvPan2[i];
+			if (cvPan3) cvPan3Avg += cvPan3[i];
 			if (cvAttack) cvAttackAvg += cvAttack[i];
 			if (cvRelease) cvReleaseAvg += cvRelease[i];
 			if (cvAmpJitter) cvAmpJitterAvg += cvAmpJitter[i];
@@ -1552,6 +1585,8 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 		if (cvFormant2) cvFormant2Avg *= invNumFrames;
 		if (cvFormant3) cvFormant3Avg *= invNumFrames;
 		if (cvPan1) cvPan1Avg *= invNumFrames;
+		if (cvPan2) cvPan2Avg *= invNumFrames;
+		if (cvPan3) cvPan3Avg *= invNumFrames;
 		if (cvAttack) cvAttackAvg *= invNumFrames;
 		if (cvRelease) cvReleaseAvg *= invNumFrames;
 		if (cvAmpJitter) cvAmpJitterAvg *= invNumFrames;
@@ -1572,10 +1607,10 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	if (pulsaretIdx < 0.0f) pulsaretIdx = 0.0f;
 	if (pulsaretIdx > 9.0f) pulsaretIdx = 9.0f;
 
-	// Window CV: bipolar ±5V → ±2.0 offset on index (full range sweep)
-	windowIdx += cvWindowAvg * 0.4f;
+	// Window CV: bipolar ±5V → ±4.0 offset on index (full range sweep)
+	windowIdx += cvWindowAvg * 0.8f;
 	if (windowIdx < 0.0f) windowIdx = 0.0f;
-	if (windowIdx > 4.0f) windowIdx = 4.0f;
+	if (windowIdx > 8.0f) windowIdx = 8.0f;
 
 	// Amplitude CV: bipolar ±5V → ±50% offset on amplitude
 	float effectiveAmplitude = amplitude + cvAmplitudeAvg * 0.1f;
@@ -1647,10 +1682,12 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 	for (int f = 0; f < 3; ++f)
 	{
 		float p = pThis->pan[f];
-		// Pan 1 CV: bipolar ±5V → ±1.0 offset on pan position
-		if (f == 0 && cvPan1)
+		// Per-formant pan CV: bipolar ±5V → ±1.0 offset on pan position
+		float* cvPanArr[] = { cvPan1, cvPan2, cvPan3 };
+		float cvPanAvgArr[] = { cvPan1Avg, cvPan2Avg, cvPan3Avg };
+		if (cvPanArr[f])
 		{
-			p += cvPan1Avg * 0.2f;
+			p += cvPanAvgArr[f] * 0.2f;
 			if (p < -1.0f) p = -1.0f;
 			if (p > 1.0f) p = 1.0f;
 		}
@@ -2396,7 +2433,7 @@ void customUi(_NT_algorithm* self, const _NT_uiData& data)
 	// Pot R: Window morph (0.0–4.0, stored as 0–40 with scaling10)
 	if (data.controls & kNT_potR)
 	{
-		int value = (int)(data.pots[2] * 40.0f + 0.5f);
+		int value = (int)(data.pots[2] * 80.0f + 0.5f);
 		NT_setParameterFromUi(algIdx, kParamWindow + offset, (int16_t)value);
 	}
 
@@ -2434,7 +2471,7 @@ void setupUi(_NT_algorithm* self, _NT_float3& pots)
 	// Sync pot soft-takeover positions
 	pots[0] = self->v[kParamPulsaret] / 90.0f;  // Pulsaret
 	pots[1] = (self->v[kParamDutyCycle] - 1) / 99.0f;  // Duty Cycle
-	pots[2] = self->v[kParamWindow] / 40.0f;  // Window
+	pots[2] = self->v[kParamWindow] / 80.0f;  // Window
 }
 
 // ============================================================
