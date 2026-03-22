@@ -269,8 +269,8 @@ Encoders and buttons not listed below keep their standard disting NT behavior.
 | Pot | Parameter | Range |
 |-----|-----------|-------|
 | Left | Pulsaret morph | 0.0–9.0 (sweeps all 10 waveforms) |
-| Centre | Duty Cycle | 1–100% |
-| Right | Window morph | 0.0–4.0 (sweeps all 5 windows) |
+| Center | Window morph | 0.0–4.0 (sweeps all 5 windows) |
+| Right | Duty Cycle | 1–100% |
 
 ### Buttons
 

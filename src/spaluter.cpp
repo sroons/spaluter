@@ -26,7 +26,7 @@
 //   Sum voices → normalize by voice count → Padé tanh soft clip → stereo output
 //
 // Hardware controls:
-//   Pot L = pulsaret morph, Pot C = duty cycle, Pot R = window morph
+//   Pot L = pulsaret morph, Pot C = window morph, Pot R = duty cycle
 //   Encoder button L = cycle mask mode, Encoder button R = cycle formant count
 //
 // ============================================================
@@ -2423,18 +2423,18 @@ void customUi(_NT_algorithm* self, const _NT_uiData& data)
 		NT_setParameterFromUi(algIdx, kParamPulsaret + offset, (int16_t)value);
 	}
 
-	// Pot C: Duty Cycle (1–100%)
+	// Pot C: Window morph (0.0–4.0, stored as 0–40 with scaling10)
 	if (data.controls & kNT_potC)
 	{
-		int value = (int)(data.pots[1] * 99.0f + 0.5f) + 1;
-		NT_setParameterFromUi(algIdx, kParamDutyCycle + offset, (int16_t)value);
+		int value = (int)(data.pots[1] * 80.0f + 0.5f);
+		NT_setParameterFromUi(algIdx, kParamWindow + offset, (int16_t)value);
 	}
 
-	// Pot R: Window morph (0.0–4.0, stored as 0–40 with scaling10)
+	// Pot R: Duty Cycle (1–100%)
 	if (data.controls & kNT_potR)
 	{
-		int value = (int)(data.pots[2] * 80.0f + 0.5f);
-		NT_setParameterFromUi(algIdx, kParamWindow + offset, (int16_t)value);
+		int value = (int)(data.pots[2] * 99.0f + 0.5f) + 1;
+		NT_setParameterFromUi(algIdx, kParamDutyCycle + offset, (int16_t)value);
 	}
 
 	// Encoder Button L: cycle mask mode (Off -> Stochastic -> Burst -> Off)
