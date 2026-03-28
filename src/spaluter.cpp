@@ -14,7 +14,7 @@
 //
 // Architecture:
 //   DRAM  (~312 KB) — pre-computed pulsaret/window lookup tables + sample buffer
-//   DTC   (~424 B)  — per-sample hot state (4 voices × phase, envelope, DC filter, PRNG)
+//   DTC   (~808 B)  — per-sample hot state (4 voices × phase, envelope, DC filter, PRNG, snapshot)
 //   SRAM  (~1 KB)   — algorithm struct, cached params, WAV request state
 //
 // Signal chain (per sample):
@@ -58,7 +58,8 @@ static const int kSampleBufferSize = 48000; // Max sample frames (1 sec at 48kHz
 struct _pulsarDRAM {
 	float pulsaretTables[kNumPulsarets][kTableSize]; // 10 waveforms: sine, sine×2, sine×3, sinc, tri, saw, square, formant, pulse, noise
 	float windowTables[kNumWindows][kTableSize];     // 9 windows: rect, gaussian, hann, exp decay, lin decay, tukey, blackman-harris, rev exp, triangle, sinc
-	float sampleBuffer[kSampleBufferSize];           // WAV sample data for sample-based pulsarets
+	float sampleBuffer[kSampleBufferSize];           // WAV sample data (raw load target)
+	float sampleTable[kTableSize];                   // Resampled pulsaret table (decimated from sampleBuffer)
 };
 
 // Per-voice parameter snapshot — frozen when voice is released
@@ -162,9 +163,9 @@ enum {
 
 	// -- Formants page --
 	kParamFormantCount, // 1–3: number of parallel formant oscillators
-	kParamFormant1Hz,   // 20–8000 Hz: formant 1 frequency
-	kParamFormant2Hz,   // 20–8000 Hz: formant 2 frequency (grayed when count < 2)
-	kParamFormant3Hz,   // 20–8000 Hz: formant 3 frequency (grayed when count < 3)
+	kParamFormant1Hz,   // 20–2000 Hz: formant 1 frequency
+	kParamFormant2Hz,   // 20–2000 Hz: formant 2 frequency (grayed when count < 2)
+	kParamFormant3Hz,   // 20–2000 Hz: formant 3 frequency (grayed when count < 3)
 
 	// -- Masking page --
 	kParamMaskMode,     // Enum: Off / Stochastic (random) / Burst (periodic pattern)
@@ -280,8 +281,6 @@ static char const * const enumChordType[] = {
 // temperament semitone ratios: 2^(st/12).
 // ============================================================
 
-#define ST(n) (1.0f)  // placeholder — filled by initChordRatios()
-
 static const int kNumChordTypes = 14;
 static float chordRatios[kNumChordTypes][kMaxVoices];
 
@@ -322,8 +321,6 @@ static void initChordRatios()
 		for (int v = 0; v < kMaxVoices; ++v)
 			chordRatios[4 + i][v] = st(chords[i][v]);
 }
-
-#undef ST
 
 // ============================================================
 // Parameter definitions
@@ -632,12 +629,16 @@ static void generatePulsaretTables(float tables[][kTableSize])
 	}
 }
 
-// Window functions (5 tables):
-//   0: rectangular  — flat 1.0 (no windowing)
-//   1: gaussian     — exp(-0.5 * ((p-0.5)/0.3)^2), sigma=0.3
-//   2: hann         — 0.5 * (1 - cos(2*pi*p)), classic smooth window
-//   3: exp decay    — exp(-4*p), sharp attack with gradual fade
-//   4: linear decay — 1-p, simple ramp down
+// Window functions (9 tables):
+//   0: rectangular      — flat 1.0 (no windowing)
+//   1: gaussian          — exp(-0.5 * ((p-0.5)/0.3)^2), sigma=0.3
+//   2: hann              — 0.5 * (1 - cos(2*pi*p)), classic smooth window
+//   3: exp decay         — exp(-4*p), sharp attack with gradual fade
+//   4: linear decay      — 1-p, simple ramp down
+//   5: tukey             — tapered cosine (alpha=0.5), flat top with smooth edges
+//   6: blackman-harris   — 4-term, very low sidelobes
+//   7: reverse exp       — exp(-4*(1-p)), slow swell to sharp cutoff
+//   8: triangle          — symmetric ramp up/down
 static void generateWindowTables(float tables[][kTableSize])
 {
 	for (int i = 0; i < kTableSize; ++i)
@@ -691,12 +692,32 @@ static void generateWindowTables(float tables[][kTableSize])
 // WAV callback — called asynchronously when sample loading completes
 // ============================================================
 
+// Resample arbitrary-length buffer down to a fixed-size table using linear interpolation.
+static void resampleToTable(float* dst, int dstLen, const float* src, int srcLen)
+{
+	float ratio = (float)(srcLen - 1) / (float)(dstLen - 1);
+	for (int i = 0; i < dstLen; ++i)
+	{
+		float pos = i * ratio;
+		int idx = (int)pos;
+		float frac = pos - idx;
+		if (idx >= srcLen - 1) { dst[i] = src[srcLen - 1]; continue; }
+		dst[i] = src[idx] + frac * (src[idx + 1] - src[idx]);
+	}
+}
+
 static void wavCallback(void* callbackData, bool success)
 {
 	_pulsarAlgorithm* pThis = static_cast<_pulsarAlgorithm*>(callbackData);
 	pThis->awaitingCallback = false;
 	if (success)
-		pThis->sampleLoadedFrames = pThis->wavRequest.numFrames;
+	{
+		int numFrames = pThis->wavRequest.numFrames;
+		// Resample raw buffer into kTableSize pulsaret table
+		resampleToTable(pThis->dram->sampleTable, kTableSize,
+		                pThis->dram->sampleBuffer, numFrames);
+		pThis->sampleLoadedFrames = numFrames;
+	}
 }
 
 // ============================================================
@@ -842,6 +863,7 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 	generatePulsaretTables(alg->dram->pulsaretTables);
 	generateWindowTables(alg->dram->windowTables);
 	memset(alg->dram->sampleBuffer, 0, sizeof(alg->dram->sampleBuffer));
+	memset(alg->dram->sampleTable, 0, sizeof(alg->dram->sampleTable));
 
 	return alg;
 }
@@ -1043,7 +1065,10 @@ void parameterChanged(_NT_algorithm* self, int p)
 		NT_getSampleFolderInfo(pThis->v[kParamFolder], folderInfo);
 		pThis->params[kParamFile].max = folderInfo.numSampleFiles - 1;
 		if (algIdx >= 0)
+		{
 			NT_updateParameterDefinition(algIdx, kParamFile);
+			NT_setParameterFromUi(algIdx, kParamFile + NT_parameterOffset(), 0);
+		}
 	}
 		break;
 	case kParamFile:
@@ -1055,7 +1080,6 @@ void parameterChanged(_NT_algorithm* self, int p)
 			if (numFrames > kSampleBufferSize)
 				numFrames = kSampleBufferSize;
 
-			pThis->sampleLoadedFrames = 0;
 			pThis->wavRequest.folder = pThis->v[kParamFolder];
 			pThis->wavRequest.sample = pThis->v[kParamFile];
 			pThis->wavRequest.numFrames = numFrames;
@@ -1932,8 +1956,8 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 							int total = vs.burstOn + vs.burstOff;
 							if (total > 0)
 							{
-								voice.burstCounter = (voice.burstCounter + 1) % (uint32_t)total;
 								maskGain = (voice.burstCounter < (uint32_t)vs.burstOn) ? 1.0f : 0.0f;
+								voice.burstCounter = (voice.burstCounter + 1) % (uint32_t)total;
 							}
 						}
 						for (int f = 0; f < vs.formantCount; ++f)
@@ -1979,13 +2003,10 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 
 					if (vs.useSample && pThis->sampleLoadedFrames >= 2)
 					{
-						// Sample-based pulsaret
-						float samplePos = pulsaretPhase * (pThis->sampleLoadedFrames - 1) * vs.sampleRateRatio;
-						int sIdx = (int)samplePos;
-						float sFrac = samplePos - sIdx;
-						if (sIdx < 0) sIdx = 0;
-						if (sIdx >= pThis->sampleLoadedFrames - 1) sIdx = pThis->sampleLoadedFrames - 2;
-						sample = dram->sampleBuffer[sIdx] + sFrac * (dram->sampleBuffer[sIdx + 1] - dram->sampleBuffer[sIdx]);
+						// Sample-based pulsaret (pre-decimated to kTableSize table)
+						float sPhase = pulsaretPhase * vs.sampleRateRatio;
+						sPhase -= static_cast<float>(static_cast<int>(sPhase)); // wrap
+						sample = readTableLerp(dram->sampleTable, kTableSize, sPhase);
 					}
 					else
 					{
@@ -2470,8 +2491,8 @@ void setupUi(_NT_algorithm* self, _NT_float3& pots)
 {
 	// Sync pot soft-takeover positions
 	pots[0] = self->v[kParamPulsaret] / 90.0f;  // Pulsaret
-	pots[1] = (self->v[kParamDutyCycle] - 1) / 99.0f;  // Duty Cycle
-	pots[2] = self->v[kParamWindow] / 80.0f;  // Window
+	pots[1] = self->v[kParamWindow] / 80.0f;  // Window
+	pots[2] = (self->v[kParamDutyCycle] - 1) / 99.0f;  // Duty Cycle
 }
 
 // ============================================================
