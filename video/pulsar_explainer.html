@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pulsar Synthesis Explainer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0f;
+    color: #e0e0e0;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+  }
+  #controls {
+    position: fixed;
+    bottom: 30px;
+    display: flex;
+    gap: 16px;
+    z-index: 10;
+  }
+  #controls button {
+    background: #1a1a2e;
+    color: #8888cc;
+    border: 1px solid #333;
+    padding: 10px 24px;
+    font-size: 15px;
+    cursor: pointer;
+    border-radius: 6px;
+    font-family: inherit;
+    transition: background 0.2s, color 0.2s;
+  }
+  #controls button:hover {
+    background: #2a2a4e;
+    color: #aaaaee;
+  }
+  #controls button.active {
+    background: #3a3a6e;
+    color: #ccccff;
+    border-color: #6666aa;
+  }
+  #stage-label {
+    position: fixed;
+    top: 30px;
+    font-size: 14px;
+    color: #555;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+<div id="stage-label">Press 1–5 for stages. In Formants stage: press F/G/H to add F1/F2/F3</div>
+<canvas id="c"></canvas>
+<div id="controls">
+  <button id="btn1" class="active" onclick="goToStage(0)">1 — Pulsaret</button>
+  <button id="btn2" onclick="goToStage(1)">2 — Window</button>
+  <button id="btn3" onclick="goToStage(2)">3 — Train</button>
+  <button id="btn4" onclick="goToStage(3)">4 — Duty Cycle</button>
+  <button id="btn5" onclick="goToStage(4)">5 — Formants</button>
+  <span id="formant-buttons" style="display:none; gap:10px;">
+    <button id="btnF1" onclick="toggleFormant(1)">F1</button>
+    <button id="btnF2" onclick="toggleFormant(2)">F2</button>
+    <button id="btnF3" onclick="toggleFormant(3)">F3</button>
+  </span>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H, cx, cy;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W / 2;
+  cy = H / 2 - 20;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- State ---
+let currentStage = 0;
+let transitionProgress = 1; // 0..1
+let transitionFrom = 0;
+let animTime = 0;
+let dutyCycleAnim = 1.0; // 1.0 = full, animates down to 0.25
+let dutyCycleTarget = 1.0;
+let formantCount = 0; // 0..3 (smooth animated value)
+let formantCountTarget = 0;
+let f1On = false, f2On = false, f3On = false; // manual toggle state
+let showWindow = 0; // 0..1 blend
+let showWindowTarget = 0;
+let trainZoom = 0; // 0 = single pulse, 1 = zoomed out to train
+let trainZoomTarget = 0;
+
+// Colors
+const COL_PULSARET = '#44aaff';
+const COL_PULSARET2 = '#ff6644';
+const COL_PULSARET3 = '#44dd88';
+const COL_WINDOW = '#ffaa22';
+const COL_LABEL = '#999999';
+const COL_LABEL_BRIGHT = '#dddddd';
+const COL_DIM = '#333344';
+const COL_PERIOD = '#444466';
+const COL_SILENCE = '#1a1a2e';
+
+function goToStage(s) {
+  if (s === currentStage) return;
+  currentStage = s;
+  document.querySelectorAll('#controls button').forEach((b, i) => {
+    b.classList.toggle('active', i === s);
+  });
+
+  // Reset formants when leaving stage 5
+  if (s !== 4) {
+    f1On = false; f2On = false; f3On = false;
+    formantCountTarget = 0;
+  }
+  updateFormantButtons();
+
+  // Set targets based on stage
+  switch (s) {
+    case 0: // Pulsaret
+      showWindowTarget = 0;
+      trainZoomTarget = 0;
+      dutyCycleTarget = 1.0;
+      break;
+    case 1: // Window
+      showWindowTarget = 1;
+      trainZoomTarget = 0;
+      dutyCycleTarget = 1.0;
+      break;
+    case 2: // Train
+      showWindowTarget = 1;
+      trainZoomTarget = 1;
+      dutyCycleTarget = 1.0;
+      break;
+    case 3: // Duty Cycle
+      showWindowTarget = 1;
+      trainZoomTarget = 1;
+      dutyCycleTarget = 0.3;
+      break;
+    case 4: // Formants
+      showWindowTarget = 1;
+      trainZoomTarget = 0;
+      dutyCycleTarget = 0.6;
+      // Don't auto-set formants — user controls via F/G/H keys or buttons
+      f1On = false; f2On = false; f3On = false;
+      formantCountTarget = 0;
+      updateFormantButtons();
+      break;
+  }
+}
+
+function toggleFormant(n) {
+  if (n === 1) f1On = !f1On;
+  else if (n === 2) f2On = !f2On;
+  else if (n === 3) f3On = !f3On;
+  // formantCountTarget encodes: F1=adds up to 1, F2=adds 0.5->1, F3=adds 1.5->2
+  // We use a simple scheme: target = number of active formants (order: F1 base, F2 mid, F3 top)
+  // But the rendering uses thresholds: >0 = F1, >1 = F2, >2 = F3
+  // So: 0 formants = 0, F1 only = 1, F1+F2 = 2, F1+F2+F3 = 3
+  // Handle any combo by mapping to the target value the renderer expects
+  let count = 0;
+  if (f3On) count = 3;
+  else if (f2On) count = 2;
+  else if (f1On) count = 1;
+  formantCountTarget = count;
+  updateFormantButtons();
+}
+
+function updateFormantButtons() {
+  const container = document.getElementById('formant-buttons');
+  container.style.display = currentStage === 4 ? 'inline-flex' : 'none';
+  document.getElementById('btnF1').classList.toggle('active', f1On);
+  document.getElementById('btnF2').classList.toggle('active', f2On);
+  document.getElementById('btnF3').classList.toggle('active', f3On);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key >= '1' && e.key <= '5') goToStage(parseInt(e.key) - 1);
+  // F/G/H toggle formants in stage 5
+  if (currentStage === 4) {
+    if (e.key === 'f' || e.key === 'F') toggleFormant(1);
+    else if (e.key === 'g' || e.key === 'G') toggleFormant(2);
+    else if (e.key === 'h' || e.key === 'H') toggleFormant(3);
+  }
+});
+
+// --- Waveform generators ---
+
+// Sinc-like pulsaret (normalized sinc with a few lobes)
+function sinc(x) {
+  if (Math.abs(x) < 0.001) return 1;
+  return Math.sin(Math.PI * x) / (Math.PI * x);
+}
+
+function pulsaretSinc(phase, formantMult) {
+  // phase 0..1 within the duty portion
+  const x = (phase - 0.5) * 6 * formantMult;
+  return sinc(x);
+}
+
+// Gaussian window
+function gaussianWindow(phase) {
+  const x = (phase - 0.5) * 2; // -1..1
+  return Math.exp(-6 * x * x);
+}
+
+// --- Smooth interpolation ---
+function lerp(a, b, t) { return a + (b - a) * t; }
+function smoothStep(t) { return t * t * (3 - 2 * t); }
+
+// --- Drawing helpers ---
+function drawWaveform(centerX, centerY, width, height, duty, formantMult, color, alpha, applyWindow, windowAlpha) {
+  const samples = 400;
+  const dutyWidth = width * duty;
+  const startX = centerX - dutyWidth / 2;
+
+  // Draw silence region hint
+  if (duty < 0.98) {
+    ctx.fillStyle = COL_SILENCE;
+    // Left silence
+    ctx.fillRect(centerX - width / 2, centerY - height - 10, (width - dutyWidth) / 2, height * 2 + 20);
+    // Right silence
+    ctx.fillRect(centerX + dutyWidth / 2, centerY - height - 10, (width - dutyWidth) / 2, height * 2 + 20);
+  }
+
+  // Draw the pulsaret waveform
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = 2.5;
+
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples; // 0..1
+    const phase = t;
+    let y = pulsaretSinc(phase, formantMult);
+    if (applyWindow) {
+      const wBlend = typeof windowAlpha === 'number' ? windowAlpha : 1;
+      const w = gaussianWindow(phase);
+      y *= lerp(1, w, wBlend);
+    }
+    const px = startX + t * dutyWidth;
+    const py = centerY - y * height;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawWindowEnvelope(centerX, centerY, width, height, duty, alpha) {
+  const samples = 200;
+  const dutyWidth = width * duty;
+  const startX = centerX - dutyWidth / 2;
+
+  ctx.beginPath();
+  ctx.strokeStyle = COL_WINDOW;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const w = gaussianWindow(t);
+    const px = startX + t * dutyWidth;
+    const py = centerY - w * height;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+}
+
+function drawLabel(text, x, y, color, size, align) {
+  ctx.fillStyle = color || COL_LABEL;
+  ctx.font = `${size || 16}px 'Helvetica Neue', Helvetica, sans-serif`;
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+}
+
+function drawBracket(x1, x2, y, tickH, color) {
+  ctx.strokeStyle = color || COL_LABEL;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  // Left tick
+  ctx.moveTo(x1, y - tickH);
+  ctx.lineTo(x1, y);
+  // Horizontal
+  ctx.lineTo(x2, y);
+  // Right tick
+  ctx.lineTo(x2, y - tickH);
+  ctx.stroke();
+  // Arrow heads
+  const midX = (x1 + x2) / 2;
+  ctx.beginPath();
+  ctx.moveTo(x1, y);
+  ctx.lineTo(x1 + 6, y - 4);
+  ctx.lineTo(x1 + 6, y + 4);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x2, y);
+  ctx.lineTo(x2 - 6, y - 4);
+  ctx.lineTo(x2 - 6, y + 4);
+  ctx.fill();
+}
+
+function drawBaseline(centerX, centerY, width) {
+  ctx.strokeStyle = COL_DIM;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(centerX - width / 2, centerY);
+  ctx.lineTo(centerX + width / 2, centerY);
+  ctx.stroke();
+}
+
+// --- Main draw ---
+function draw() {
+  animTime += 0.016;
+
+  // Smooth transitions
+  const rate = 0.04;
+  showWindow = lerp(showWindow, showWindowTarget, rate);
+  trainZoom = lerp(trainZoom, trainZoomTarget, rate);
+  dutyCycleAnim = lerp(dutyCycleAnim, dutyCycleTarget, rate);
+  formantCount = lerp(formantCount, formantCountTarget, rate * 0.7);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.6);
+  grad.addColorStop(0, '#0f0f1a');
+  grad.addColorStop(1, '#0a0a0f');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  const pulseWidth = lerp(420, 180, trainZoom);
+  const pulseHeight = lerp(120, 80, trainZoom);
+  const pulseSpacing = lerp(0, pulseWidth * 1.3, trainZoom);
+  const numPulses = trainZoom > 0.01 ? 5 : 1;
+  const totalTrainWidth = (numPulses - 1) * pulseSpacing;
+  const trainStartX = cx - totalTrainWidth / 2;
+  const duty = dutyCycleAnim;
+
+  // Period bracket position
+  const bracketY = cy + pulseHeight + 50;
+
+  for (let p = 0; p < numPulses; p++) {
+    const alpha = trainZoom > 0.01 ? Math.min(1, trainZoom * 3) : 1;
+    if (p > 0 && alpha < 0.01) continue;
+
+    const pulseCX = numPulses === 1 ? cx : trainStartX + p * pulseSpacing;
+    const pulseAlpha = p === 0 ? 1 : alpha;
+
+    drawBaseline(pulseCX, cy, pulseWidth);
+
+    // Draw formant layers (stage 5)
+    if (formantCount > 0.01) {
+      // F2 (behind) — appears when formantCount > 1
+      if (formantCount > 1.01) {
+        const f2Alpha = Math.min(1, formantCount - 1) * pulseAlpha * 0.6;
+        drawWaveform(pulseCX, cy, pulseWidth, pulseHeight * 0.7, duty, 3.5, COL_PULSARET2, f2Alpha, showWindow > 0.01, showWindow);
+      }
+      // F3 (behind) — appears when formantCount > 2
+      if (formantCount > 2.01) {
+        const f3Alpha = Math.min(1, formantCount - 2) * pulseAlpha * 0.5;
+        drawWaveform(pulseCX, cy, pulseWidth, pulseHeight * 0.5, duty, 6, COL_PULSARET3, f3Alpha, showWindow > 0.01, showWindow);
+      }
+    }
+
+    // Primary pulsaret / F1 (always visible, gains formant cycling when F1 is on)
+    const fMult = formantCount > 0.01 ? lerp(1, 1.8, Math.min(formantCount, 1)) : 1;
+    drawWaveform(pulseCX, cy, pulseWidth, pulseHeight, duty, fMult, COL_PULSARET, pulseAlpha, showWindow > 0.01, showWindow);
+
+    // Window envelope (dashed, stage 2+)
+    if (showWindow > 0.01 && formantCount < 0.5) {
+      drawWindowEnvelope(pulseCX, cy, pulseWidth, pulseHeight, duty, showWindow * pulseAlpha * 0.8);
+    }
+
+    // Period bracket (train view)
+    if (trainZoom > 0.3 && p < numPulses - 1) {
+      const bAlpha = Math.min(1, (trainZoom - 0.3) * 3);
+      ctx.globalAlpha = bAlpha * 0.6;
+      ctx.fillStyle = COL_PERIOD;
+      ctx.strokeStyle = COL_PERIOD;
+      drawBracket(pulseCX - pulseWidth / 2, pulseCX + pulseSpacing - pulseWidth / 2 - 4, bracketY, 8, COL_PERIOD);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // --- Labels ---
+  const labelY = cy - pulseHeight - 35;
+
+  // Stage 0: Pulsaret label
+  if (currentStage === 0) {
+    const a = 1 - showWindow;
+    if (a > 0.01) {
+      drawLabel('pulsaret', cx, labelY, COL_LABEL_BRIGHT, 20);
+      drawLabel('(sinc waveform — the timbre of each burst)', cx, labelY + 28, COL_LABEL, 14);
+      // Arrow pointing to waveform
+      ctx.strokeStyle = COL_LABEL;
+      ctx.globalAlpha = a * 0.5;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, labelY + 42);
+      ctx.lineTo(cx, cy - pulseHeight - 5);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Stage 1: Window label
+  if (currentStage === 1 && showWindow > 0.3) {
+    drawLabel('window', cx + pulseWidth * duty / 2 + 60, cy - pulseHeight * 0.6, COL_WINDOW, 18, 'left');
+    drawLabel('(Gaussian — shapes each burst\'s amplitude)', cx + pulseWidth * duty / 2 + 60, cy - pulseHeight * 0.6 + 24, COL_LABEL, 13, 'left');
+    drawLabel('pulsaret × window', cx, labelY, COL_LABEL_BRIGHT, 20);
+  }
+
+  // Stage 2: Train label
+  if (currentStage === 2 && trainZoom > 0.5) {
+    drawLabel('pulsar train', cx, labelY, COL_LABEL_BRIGHT, 20);
+    drawLabel('repetition rate = fundamental frequency (pitch)', cx, bracketY + 28, COL_PERIOD, 14);
+    drawLabel('one period', cx, bracketY + 8, COL_PERIOD, 13);
+  }
+
+  // Stage 3: Duty cycle
+  if (currentStage === 3 && trainZoom > 0.5) {
+    drawLabel('duty cycle', cx, labelY, COL_LABEL_BRIGHT, 20);
+    const dutyPct = Math.round(duty * 100);
+    drawLabel(`${dutyPct}% of each period contains sound`, cx, labelY + 28, COL_LABEL, 14);
+    // Animate duty cycle down and back up
+    if (Math.abs(dutyCycleAnim - dutyCycleTarget) < 0.01) {
+      // Oscillate
+      const t = animTime * 0.4;
+      const cycle = (Math.sin(t) + 1) / 2; // 0..1
+      dutyCycleTarget = lerp(0.15, 0.9, cycle);
+    }
+    drawLabel('silence', cx + pulseWidth * 0.35, cy + 20, '#664444', 12);
+  }
+
+  // Stage 4: Formants
+  if (currentStage === 4) {
+    drawLabel('formants', cx, labelY - 10, COL_LABEL_BRIGHT, 20);
+
+    // F1 label — visible when formantCount > 0
+    if (formantCount > 0.01) {
+      ctx.globalAlpha = Math.min(1, formantCount);
+      drawLabel('F1', cx - 160, cy + pulseHeight + 30, COL_PULSARET, 16);
+      drawLabel('200 Hz', cx - 160, cy + pulseHeight + 50, COL_PULSARET, 13);
+      ctx.globalAlpha = 1;
+    }
+
+    // F2 label — visible when formantCount > 1
+    if (formantCount > 1.01) {
+      ctx.globalAlpha = Math.min(1, formantCount - 1);
+      drawLabel('F2', cx, cy + pulseHeight + 30, COL_PULSARET2, 16);
+      drawLabel('800 Hz', cx, cy + pulseHeight + 50, COL_PULSARET2, 13);
+      ctx.globalAlpha = 1;
+    }
+
+    // F3 label — visible when formantCount > 2
+    if (formantCount > 2.01) {
+      ctx.globalAlpha = Math.min(1, formantCount - 2);
+      drawLabel('F3', cx + 160, cy + pulseHeight + 30, COL_PULSARET3, 16);
+      drawLabel('2000 Hz', cx + 160, cy + pulseHeight + 50, COL_PULSARET3, 13);
+      ctx.globalAlpha = 1;
+    }
+
+    if (formantCount > 0.01) {
+      drawLabel('each formant cycles the waveform at its own frequency', cx, labelY + 18, COL_LABEL, 14);
+      drawLabel('creating independent spectral peaks — like vowels in speech', cx, labelY + 38, COL_LABEL, 13);
+    } else {
+      drawLabel('press F to add the first formant', cx, labelY + 18, COL_LABEL, 14);
+    }
+  }
+
+  requestAnimationFrame(draw);
+}
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

@@ -1,233 +1,104 @@
-# Pulsar Plugin Code Review
+---
+# Code Review — 2026-03-22 17:19:38
+## Target: `src/spaluter.cpp`
 
-Performance and sound quality findings for `src/pulsar.cpp`. All suggestions are intended to improve performance and/or sound quality without negatively impacting sound quality.
+## Issues
+
+### [MAJOR] setupUi pot mapping swapped for Pot C and Pot R
+- **Location**: src/spaluter.cpp:2472-2474
+- **Issue**: In `customUi()`, Pot C (pots[1]) maps to Window and Pot R (pots[2]) maps to Duty Cycle. But in `setupUi()`, pots[1] is initialized from kParamDutyCycle and pots[2] from kParamWindow — the opposite assignment. This means soft-takeover positions are wrong and pots will jump when first touched after loading the algorithm.
+- **Suggestion**: Swap the assignments in `setupUi()` to match `customUi()`:
+  ```cpp
+  pots[0] = self->v[kParamPulsaret] / 90.0f;        // Pot L: Pulsaret
+  pots[1] = self->v[kParamWindow] / 80.0f;           // Pot C: Window
+  pots[2] = (self->v[kParamDutyCycle] - 1) / 99.0f;  // Pot R: Duty
+  ```
+
+### [MAJOR] Snapshot update runs per-sample inside inner loop
+- **Location**: src/spaluter.cpp:1804-1832
+- **Issue**: The full `_voiceSnapshot` (~96 bytes) is copied for every gated voice on every sample. Snapshot data comes from block-rate values (CV averages, cached params) that don't change within a block. This is unnecessary per-sample work on a Cortex-M7 where DTC bandwidth is precious.
+- **Suggestion**: Hoist the snapshot update out of the sample loop. Update snapshots once per block (before the sample loop) for all gated voices. Only the `gate` check needs to remain per-sample to catch mid-block gate transitions in CV mode, but the actual snapshot data is constant across the block.
+
+### [MINOR] Burst counter increment order inconsistency between mask modes
+- **Location**: src/spaluter.cpp:1935 vs 1917
+- **Issue**: In the uniform masking branch (non-perFormantMask), `burstCounter` is incremented *before* the mask comparison (line 1935). In the per-formant branch, it is incremented *after* the formant loop (line 1917). This means the first pulse after enabling burst masking will behave differently depending on whether per-formant masking is on or off.
+- **Suggestion**: Make the increment order consistent — increment after the comparison in both branches, so pulse 0 always starts at counter position 0.
+
+### [MINOR] Comment/code mismatch: window table count
+- **Location**: src/spaluter.cpp:635
+- **Issue**: The comment block says "Window functions (5 tables)" but there are 9 window tables (kNumWindows = 9), and the code generates indices 0-8 (rectangular, gaussian, hann, exp decay, linear decay, tukey, blackman-harris, reverse exp, triangle).
+- **Suggestion**: Update the comment to "Window functions (9 tables)" and list all 9 window types.
+
+### [MINOR] Comment/code mismatch: DTC size in header
+- **Location**: src/spaluter.cpp:17
+- **Issue**: The architecture comment says "DTC (~424 B)" but the struct comment at line 136 says "~896 bytes". The actual size with 4 voices including snapshots plus overhead is closer to ~808 B.
+- **Suggestion**: Update the header comment to match the actual DTC size (~808 B).
+
+### [MINOR] Formant Hz range mismatch in enum comments
+- **Location**: src/spaluter.cpp:165-167
+- **Issue**: The enum comments say formant range is "20-8000 Hz" but the parameter definitions (lines 341-343) set max=2000.
+- **Suggestion**: Update the enum comments to say "20-2000 Hz".
+
+### [NIT] CV averaging loop checks 16 null pointers per sample
+- **Location**: src/spaluter.cpp:1553-1571
+- **Issue**: The single combined CV averaging loop checks all 16 CV pointer null checks on every iteration. While this is outside the critical inner loop, splitting into per-pointer loops would allow the compiler to optimize each as a simple tight accumulation when the pointer is non-null, and skip entirely when null.
+- **Suggestion**: Consider restructuring as individual per-pointer loops, or accept the current approach as good enough given it only runs once per block.
+
+### [NIT] Unused macro `ST(n)` defined then immediately undef'd
+- **Location**: src/spaluter.cpp:283, 326
+- **Issue**: `#define ST(n) (1.0f)` is defined as a "placeholder" but is never used — `initChordRatios()` uses a lambda instead. The define/undef is dead code.
+- **Suggestion**: Remove the `#define ST` and `#undef ST` lines.
+
+## Strengths
+
+- **Memory architecture is well-designed**: Clear separation of DRAM (tables), DTC (hot per-sample state), and SRAM (algorithm struct) is ideal for the Cortex-M7's tightly-coupled memory system.
+- **Voice allocation is robust**: The 3-tier MIDI allocation (retrigger, free, LRU steal) and 2-tier CV allocation with proper edge detection and overlapping releases are solid.
+- **Snapshot-on-release pattern**: Freezing timbral parameters when a voice releases prevents audible parameter changes on decaying voices — a thoughtful design choice.
+- **Parameter graying logic**: Dynamic UI state management (graying out irrelevant params based on mode) provides a clean user experience.
+- **DC blocking and soft clipping**: Per-voice DC block followed by a single Pade tanh soft clip on the sum is the right signal chain order, and the fast approximations are appropriate for the target.
+- **Thorough documentation**: Function-level block comments, inline explanations, and the header overview give a clear mental model of the entire system. The code is exceptionally readable for an embedded audio plugin.
+- **Safe volatile display state**: Using `volatile` for cross-interrupt display fields is correct for ARM single-word atomicity, and the fields are all independent (no multi-field consistency needed).
+- **Custom UI is well-implemented**: Hardware button edge detection, pot soft-takeover, and encoder cycling all follow the API patterns correctly.
+
+## Summary
+
+This is a well-structured, production-quality embedded audio plugin with thoughtful architecture for the Cortex-M7 target. The main actionable issue is the **swapped pot mapping in `setupUi()`** which will cause pots to jump on algorithm load — this is a user-facing bug that should be fixed before the next release. The **per-sample snapshot update** is a performance concern worth addressing if CPU budget is tight, but is functionally correct. The remaining issues are comment mismatches and minor inconsistencies. The code demonstrates strong understanding of the disting NT API, real-time audio constraints, and embedded DSP best practices. **Approve with changes** — fix the `setupUi()` pot swap, consider hoisting snapshot updates.
 
 ---
 
-## Performance
+## Author Response — 2026-03-22 17:19:38
 
-### 1. Precompute reciprocal of sample rate per block
+### [MAJOR] setupUi pot mapping swapped for Pot C and Pot R
+- **Response**: Agree — Good catch. `customUi()` clearly maps pots[1]→Window and pots[2]→Duty, but `setupUi()` had them reversed. This would cause pot jumps on algorithm load.
+- **Action**: Changed: Swapped pots[1] and pots[2] assignments in `setupUi()` to match `customUi()` mapping (pots[1]=Window, pots[2]=Duty).
 
-**Location:** `step()`, line 850
+### [MAJOR] Snapshot update runs per-sample inside inner loop
+- **Response**: Disagree — The suggestion to hoist snapshot updates before the sample loop is incomplete. In CV mode, voice gates transition mid-block via per-sample edge detection. A voice triggered on sample 64 of a 128-sample block needs its snapshot set immediately at that point, not deferred to the next block. Hoisting would require duplicating the full snapshot copy into every voice allocation code path (CV trigger, MIDI note-on, free-run init), which adds complexity and maintenance burden for multiple callers. The current approach is functionally correct and simple: update every sample while gated, freeze on release. The ~96-byte copy per gated voice is in DTC (single-cycle writes on M7), and with typical 1-2 active gated voices the overhead is modest. If profiling shows this is a bottleneck, a better optimization would be a dirty flag set on parameter change rather than hoisting out of the loop.
+- **Action**: No change: correctness for mid-block gate transitions takes priority, and profiling hasn't shown this as a bottleneck.
 
-The division `freqHz / sr` occurs every sample inside the main loop. Division is expensive on Cortex-M7. Precomputing `float invSr = 1.0f / sr;` once at the top of `step()` and replacing with `freqHz * invSr` saves one hardware division per sample.
+### [MINOR] Burst counter increment order inconsistency between mask modes
+- **Response**: Agree — The per-formant branch increments after comparison (pulse 0 starts at counter 0), while the uniform branch incremented before (pulse 0 starts at counter 1). This inconsistency would cause the first pulse after enabling burst masking to behave differently depending on the per-formant setting.
+- **Action**: Changed: Moved the increment after the comparison in the uniform masking branch to match the per-formant branch ordering.
 
-**Benefit:** Eliminates one floating-point division per sample. On Cortex-M7 FPv5, `fdiv` takes ~14 cycles vs ~1 cycle for `fmul`.
+### [MINOR] Comment/code mismatch: window table count
+- **Response**: Agree — Comment was stale from before the 4 additional window types were added.
+- **Action**: Changed: Updated comment to list all 9 window types with descriptions.
 
----
+### [MINOR] Comment/code mismatch: DTC size in header
+- **Response**: Agree — The 424 B figure predates the addition of `_voiceSnapshot` to the per-voice struct.
+- **Action**: Changed: Updated header comment to ~808 B and added "snapshot" to the description.
 
-### 2. Precompute reciprocal of duty per formant
+### [MINOR] Formant Hz range mismatch in enum comments
+- **Response**: Agree — The enum comments said 8000 Hz but the parameter definitions cap at 2000 Hz.
+- **Action**: Changed: Updated enum comments to 20–2000 Hz.
 
-**Location:** `step()`, line 915
+### [NIT] CV averaging loop checks 16 null pointers per sample
+- **Response**: Agree in principle, but accept current approach — The branch predictor on M7 handles this well after the first iteration, and splitting into 16 separate loops would bloat code size (which matters with -Os). The null checks are outside the critical inner voice loop. Would only revisit if profiling shows this block as a hotspot.
+- **Action**: No change: current approach is good enough for a block-rate operation.
 
-Inside the per-sample, per-formant inner loop: `float pulsaretPhase = phase / duty;`. The `duty` value is constant for the entire block (computed at lines 817-833). Precomputing `float invDuty[3]` before the sample loop and using `phase * invDuty[f]` would eliminate a division from the hottest loop in the plugin.
+### [NIT] Unused macro `ST(n)` defined then immediately undef'd
+- **Response**: Agree — Dead code left over from an earlier approach before `initChordRatios()` replaced it with a lambda.
+- **Action**: Changed: Removed both `#define ST` and `#undef ST` lines.
 
-**Benefit:** Eliminates one division per sample per active formant from the innermost loop. With 3 formants at 48kHz, that is up to 144,000 divisions per second replaced with multiplications.
-
----
-
-### 3. Remove no-op mask smooth hold assignment
-
-**Location:** `step()`, line 901
-
-```cpp
-dtc->maskSmooth[f] = dtc->maskSmooth[f]; // hold
-```
-
-This is a self-assignment that compiles to a pointless memory read and write every sample for every formant on non-pulse samples (the vast majority of samples). Removing this line entirely preserves identical behavior since the value already persists in memory.
-
-**Benefit:** Eliminates unnecessary memory load/store traffic on non-pulse samples. With formantCount=3, this removes up to 3 wasted memory writes per sample.
-
----
-
-### 4. Combine CV averaging into a single loop
-
-**Location:** `step()`, lines 780-794
-
-Three separate loops iterate over the entire buffer to compute CV averages:
-```cpp
-for (int i = 0; i < numFrames; ++i) cvFormantAvg += cvFormant[i];
-for (int i = 0; i < numFrames; ++i) cvDutyAvg += cvDuty[i];
-for (int i = 0; i < numFrames; ++i) cvMaskAvg += cvMask[i];
-```
-
-These can be merged into a single loop, improving cache locality since the CV buffers are in the same region of bus memory.
-
-**Benefit:** Reduces loop overhead by 2x and improves data cache utilization by processing adjacent memory in a single pass.
-
----
-
-### 5. Replace per-sample `exp2f` with fast approximation for pitch CV
-
-**Location:** `step()`, line 847
-
-```cpp
-freqHz *= exp2f(cvPitch[i]);
-```
-
-`exp2f()` is called every sample when pitch CV is connected. On Cortex-M7 without hardware exp2, this is a costly libm call (~50-100 cycles). A fast polynomial approximation (e.g., the classic integer bit-manipulation trick or a cubic polynomial over [-1,1] with octave range reduction) can achieve sufficient accuracy for V/Oct pitch tracking at a fraction of the cost.
-
-**Benefit:** Potential ~5-10x speedup for the exp2 computation per sample. Pitch CV accuracy within ~1 cent is achievable with a 3rd-order polynomial approximation, which is well within musical tolerance.
-
----
-
-### 6. Hoist `maskSmoothCoeff` out of the sample loop
-
-**Location:** `step()`, line 895
-
-```cpp
-float maskSmoothCoeff = 0.995f;
-```
-
-This constant is declared inside the per-sample loop. While the compiler may optimize this, explicitly declaring it before the loop makes the intent clear and guarantees no per-sample overhead.
-
-**Benefit:** Minor; ensures no redundant stack allocation per iteration if the compiler doesn't hoist it.
-
----
-
-### 7. Precompute formant ratio outside the sample loop (table-based mode)
-
-**Location:** `step()`, line 931
-
-```cpp
-float formantRatio = pThis->formantHz[f] * formantCvMul / (dtc->fundamentalHz > 0.1f ? dtc->fundamentalHz : 0.1f);
-```
-
-When pitch CV is not connected, `fundamentalHz` changes slowly (only via glide). The formant ratio could be computed once per block and updated incrementally, avoiding a per-sample division per formant. When pitch CV is connected, the frequency changes per sample, so this optimization applies only to the non-CV case.
-
-**Benefit:** Eliminates one division per sample per formant in the common case (no pitch CV). Falls back to per-sample when pitch CV is active.
-
----
-
-## Sound Quality
-
-### 8. Fix mask smoothing to run continuously
-
-**Location:** `step()`, lines 895-903
-
-The mask smooth filter currently only updates on pulse boundaries:
-```cpp
-if (newPulse)
-    dtc->maskSmooth[f] = maskGain + maskSmoothCoeff * (dtc->maskSmooth[f] - maskGain);
-else
-    dtc->maskSmooth[f] = dtc->maskSmooth[f]; // hold
-```
-
-This means the mask transitions are effectively instantaneous -- the one-pole filter runs for exactly one sample at each pulse, providing negligible smoothing. Between pulses, the value is held (no-op), so the filter never converges toward the target. The result is that mask on/off transitions produce discontinuities (clicks), especially at lower fundamental frequencies where pulses are further apart.
-
-**Fix:** Store the mask target per-formant and run the one-pole filter every sample:
-```cpp
-// On new pulse, update target:
-if (newPulse) dtc->maskTarget[f] = maskGain;
-// Every sample, smooth toward target:
-dtc->maskSmooth[f] = dtc->maskTarget[f] + maskSmoothCoeff * (dtc->maskSmooth[f] - dtc->maskTarget[f]);
-```
-
-**Benefit:** Eliminates clicks on mask transitions. The one-pole filter will properly smooth the mask gain over multiple samples, producing clean crossfade-like transitions between masked and unmasked pulses.
-
----
-
-### 9. Make LeakDC coefficient sample-rate dependent
-
-**Location:** `step()`, lines 962, 967
-
-```cpp
-float yL = xL - dtc->leakDC_xL + 0.995f * dtc->leakDC_yL;
-```
-
-The DC-blocking filter coefficient is hardcoded to `0.995`. This gives a cutoff frequency that depends on sample rate:
-- At 48kHz: ~38 Hz cutoff
-- At 96kHz: ~19 Hz cutoff
-
-The cutoff should be consistent regardless of sample rate. Precompute the coefficient as `1.0 - (2*pi*fc / sr)` where `fc` is the desired cutoff frequency (e.g., 20-30 Hz), and store it in the DTC struct (updated on construction or sample rate change).
-
-**Benefit:** Consistent low-frequency response across different sample rates. At higher sample rates, the current hardcoded value removes less DC offset than intended; at lower rates it cuts into audible bass content.
-
----
-
-### 10. Make mask smooth coefficient sample-rate dependent
-
-**Location:** `step()`, line 895
-
-```cpp
-float maskSmoothCoeff = 0.995f;
-```
-
-Same issue as the LeakDC coefficient -- the smoothing time constant depends on sample rate. At 48kHz this gives a ~4.6ms time constant; at 96kHz it doubles to ~9.2ms. Should derive from a desired time constant in ms using `coeffFromMs()`, which is already available.
-
-**Benefit:** Consistent mask smoothing behavior across sample rates.
-
----
-
-### 11. Guard against negative sample buffer index
-
-**Location:** `step()`, lines 924-925
-
-```cpp
-if (sIdx >= pThis->sampleLoadedFrames - 1) sIdx = pThis->sampleLoadedFrames - 2;
-```
-
-If `sampleLoadedFrames` is 0 or 1, `sampleLoadedFrames - 2` is negative, causing an out-of-bounds read into `dram->sampleBuffer`. The outer check `pThis->sampleLoadedFrames > 0` at line 918 allows `sampleLoadedFrames == 1`, which would result in `sIdx = -1`.
-
-**Fix:** Change the guard to require `sampleLoadedFrames >= 2`, or clamp `sIdx` to `max(0, sampleLoadedFrames - 2)`.
-
-**Benefit:** Prevents potential out-of-bounds memory access that could produce audio glitches or crashes with very short samples.
-
----
-
-### 12. Velocity is stored but unused
-
-**Location:** `midiMessage()`, line 661; `step()`
-
-The MIDI velocity is captured into `dtc->velocity` but is never applied during audio rendering. In standard synthesizer behavior, velocity scales the amplitude of the note. Applying velocity would improve expressiveness:
-
-```cpp
-// In step(), where envelope is applied:
-float vel = dtc->velocity / 127.0f;
-sumL *= dtc->envValue * amplitude * vel;
-sumR *= dtc->envValue * amplitude * vel;
-```
-
-**Benefit:** Adds velocity sensitivity, which is expected behavior for a MIDI instrument and improves playability. Without it, all notes sound at the same loudness regardless of how they are played.
-
----
-
-### 13. Use `floorf()` instead of `(int)` cast for phase wrapping
-
-**Location:** `step()`, line 933
-
-```cpp
-tablePhase -= (int)tablePhase; // wrap to 0-1
-```
-
-Cast to `int` truncates toward zero in C/C++. For negative values of `tablePhase` (which shouldn't normally occur but could due to floating-point edge cases), this truncation goes the wrong direction, leaving a negative result. The follow-up `if (tablePhase < 0.0f) tablePhase += 1.0f;` partially handles this but only corrects by one period. Using `tablePhase = fmodf(tablePhase, 1.0f)` or `tablePhase -= floorf(tablePhase)` is more robust.
-
-**Benefit:** More robust phase wrapping prevents potential discontinuities at extreme formant ratios or edge cases.
-
----
-
-## Build / Compiler
-
-### 14. Consider `-O2` instead of `-Os` for the step function
-
-**Location:** `Makefile`, line 14
-
-The build uses `-Os` (optimize for size). For a DSP-intensive audio plugin running on Cortex-M7, `-O2` (optimize for speed) would allow the compiler to unroll inner loops, inline more aggressively, and better schedule FPU instructions. The code size increase is typically small for a single-file plugin. Alternatively, use `__attribute__((optimize("O2")))` on just the `step()` function to keep the rest size-optimized.
-
-**Benefit:** Potentially significant performance improvement in the audio processing loop. `-Os` can inhibit loop unrolling and instruction scheduling optimizations that matter for the per-sample inner loop.
-
----
-
-### 15. Add `-ffast-math` for the step function
-
-**Location:** `Makefile`, line 14
-
-The plugin does not use `-ffast-math`. Enabling it (or the more targeted `-fno-math-errno -fno-trapping-math -ffinite-math-only -funsafe-math-optimizations`) would allow the compiler to:
-- Reorder floating-point operations
-- Use reciprocal approximations for division
-- Skip NaN/Inf checks
-- Use fused multiply-add (FMA) instructions on Cortex-M7 FPv5
-
-The plugin already uses fast approximations (fastTanh) and doesn't rely on strict IEEE 754 semantics, so this is safe.
-
-**Benefit:** Enables FMA instructions and other FPU optimizations. Cortex-M7 FPv5 has hardware FMA which can combine multiply+add into a single cycle, but the compiler won't emit these without `-ffast-math` or `-ffp-contract=fast`.
+## Overall Notes
+Good review. The pot swap was a real bug that would have been user-visible — thanks for catching it. The snapshot hoisting suggestion is reasonable in theory but doesn't account for mid-block gate transitions in CV mode; a dirty-flag approach would be a better optimization path if needed. All comment fixes were straightforward and overdue.
