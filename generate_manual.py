@@ -119,8 +119,8 @@ def pulsaret_sinc(phase, formant_mult=1.0):
 
 
 def gaussian_window(phase):
-    x = (phase - 0.5) * 2
-    return math.exp(-6 * x * x)
+    x = (phase - 0.5) / 0.3
+    return math.exp(-0.5 * x * x)
 
 
 def hann_window(phase):
@@ -158,13 +158,28 @@ def window_sample(idx, t):
     if idx == 0:
         return 1.0
     elif idx == 1:
-        return math.exp(-8 * (t - 0.5) ** 2)
+        x = (t - 0.5) / 0.3
+        return math.exp(-0.5 * x * x)
     elif idx == 2:
         return 0.5 * (1 - math.cos(2 * math.pi * t))
     elif idx == 3:
-        return math.exp(-5 * t)
+        return math.exp(-4 * t)
     elif idx == 4:
         return 1.0 - t
+    elif idx == 5:
+        alpha = 0.5
+        if t < alpha * 0.5:
+            return 0.5 * (1 - math.cos(2 * math.pi * t / alpha))
+        elif t > 1.0 - alpha * 0.5:
+            return 0.5 * (1 - math.cos(2 * math.pi * (1.0 - t) / alpha))
+        return 1.0
+    elif idx == 6:
+        tp = 2 * math.pi * t
+        return 0.35875 - 0.48829 * math.cos(tp) + 0.14128 * math.cos(2 * tp) - 0.01168 * math.cos(3 * tp)
+    elif idx == 7:
+        return math.exp(-4 * (1.0 - t))
+    elif idx == 8:
+        return 2 * t if t < 0.5 else 2 * (1.0 - t)
     return 0.0
 
 
@@ -955,7 +970,7 @@ def build_pdf(output_path=None):
     story.append(Spacer(1, 0.4 * inch))
     story.append(Paragraph(
         'A pulsar synthesis instrument plugin for the Expert Sleepers disting NT Eurorack module. '
-        '66 parameters, 15 CV inputs, 4-voice polyphony, 10 pulsaret waveforms, '
+        '68 parameters, 18 CV inputs, 4-voice polyphony, 10 pulsaret waveforms, '
         '3 independent formants, stochastic and burst masking.',
         styles['body']))
     story.append(Spacer(1, 0.4 * inch))
@@ -1053,7 +1068,7 @@ def build_pdf(output_path=None):
         'or impossible to achieve with conventional subtractive or FM synthesis.',
         styles['body']))
     story.append(Paragraph(
-        'With up to 4 polyphonic voices, 3 independent formant oscillators, 15 CV inputs '
+        'With up to 4 polyphonic voices, 3 independent formant oscillators, 18 CV inputs '
         '(12 pre-routed by default), and real-time waveform display, Spaluter is designed '
         'for both immediate sonic exploration and deep, evolving patches under voltage control.',
         styles['body']))
@@ -1215,15 +1230,19 @@ def build_pdf(output_path=None):
     story.append(h1_with_anchor('Window Functions', 'windows', styles))
     story.append(Paragraph(
         'The window function shapes the amplitude envelope applied to each pulsaret. '
-        'The Window parameter (0.0\u20134.0) morphs between 5 window types.',
+        'The Window parameter (0.0\u20138.0) morphs between 9 window types.',
         styles['body']))
 
     window_descs = [
         ('0.0 \u2014 Rectangular', 'No fade \u2014 hard edges. Maximum brightness and click. Highest spectral energy but also highest sidelobe levels.'),
-        ('1.0 \u2014 Gaussian', 'Smooth, bell-shaped fade. The most natural-sounding option with excellent sidelobe suppression.'),
-        ('2.0 \u2014 Hann', 'Raised cosine. Similar to Gaussian with a slightly flatter top. Good general-purpose window.'),
+        ('1.0 \u2014 Gaussian', 'Smooth bell curve with sigma=0.3. Natural fade-in and fade-out with strong sidelobe suppression.'),
+        ('2.0 \u2014 Hann', 'Raised cosine: 0.5 * (1 - cos(2*pi*p)). Smooth endpoints and a broad rounded peak.'),
         ('3.0 \u2014 Exp Decay', 'Sharp attack with exponential ringout. Percussive, plucked character. Pairs well with sinc pulsaret.'),
         ('4.0 \u2014 Linear Decay', 'Sharp attack with linear ramp down. Simpler percussive shape than exponential.'),
+        ('5.0 \u2014 Tukey', 'Tapered cosine with alpha=0.5. Smooth fade-in/out edges with a flat center plateau.'),
+        ('6.0 \u2014 Blackman-Harris', 'Four-term Blackman-Harris curve. Very low sidelobes and very smooth spectral edges.'),
+        ('7.0 \u2014 Reverse Exp', 'Slow exponential swell into a sharp cutoff. Reverse-plucked or bowed-style articulation.'),
+        ('8.0 \u2014 Triangle', 'Linear rise to the midpoint, then linear fall. Symmetric ramp with a pointed peak.'),
     ]
 
     for idx, (name, desc) in enumerate(window_descs):
@@ -1286,9 +1305,9 @@ def build_pdf(output_path=None):
     story.append(Spacer(1, 0.1 * inch))
     story.append(Paragraph('Pot Mappings', styles['h3']))
     pot_data = [
-        ['Pot Left', 'Pulsaret morph', '0.0\u20139.0 (sweeps all 10 waveforms)'],
-        ['Pot Center', 'Window morph', '0.0\u20134.0 (sweeps all 5 windows)'],
-        ['Pot Right', 'Duty Cycle', '1\u2013100%'],
+        ['Pot L', 'Pulsaret morph', '0.0\u20139.0 (sweeps all 10 waveforms)'],
+        ['Pot C', 'Window morph', '0.0\u20138.0 (sweeps all 9 windows)'],
+        ['Pot R', 'Duty Cycle', '1\u2013100%'],
     ]
     story.append(make_table(
         ['Pot', 'Parameter', 'Range'],
@@ -1323,7 +1342,7 @@ def build_pdf(output_path=None):
         '<b>Pulsaret shape</b> (Pot L or Waveform page): Sweeps through 10 waveform types. Start with Sinc (3.0) for the classic pulsar sound, then explore Sine (0.0) for purity or Noise (9.0) for texture.',
         '<b>Window function</b> (Pot C or Waveform page): Shapes the attack and decay of each burst. Gaussian (1.0) for smooth tones, Rectangular (0.0) for maximum brightness, Exp Decay (3.0) for plucked character.',
         '<b>Duty cycle</b> (Pot R or Waveform page): The most dramatic timbral control after formant frequency. 80\u2013100%% is full and warm; 30\u201360%% is the characteristic pulsar buzz; 5\u201320%% produces sparse particle textures.',
-        '<b>Formant frequencies</b> (Formants page): Set spectral peak locations. F1=270, F2=2300 produces an "ah" vowel. F1=200, F2=347, F3=511 produces metallic bell tones. Modulate with CV for expressive sweeps.',
+        '<b>Formant frequencies</b> (Formants page): Set spectral peak locations. F1=270, F2=1090 produces an "ah" vowel. F1=200, F2=347, F3=511 produces metallic bell tones. Modulate with CV for expressive sweeps.',
     ]
     for item in timbre_items:
         story.append(Paragraph('\u2022 ' + item, styles['bullet']))
@@ -1363,7 +1382,7 @@ def build_pdf(output_path=None):
 
     story.append(Paragraph('disting NT Parameter Navigation', styles['h2']))
     story.append(Paragraph(
-        'Spaluter\'s 66 parameters are organized across 15 pages. On the disting NT hardware, '
+        'Spaluter\'s 68 parameters are organized across 15 pages. On the disting NT hardware, '
         'use the <b>left encoder</b> to scroll through parameter pages and the '
         '<b>right encoder</b> to adjust the selected parameter value. Press an encoder '
         'button to toggle between page selection and value editing modes.',
@@ -1390,7 +1409,7 @@ def build_pdf(output_path=None):
     # PARAMETERS TABLE
     # ================================================================
     story.append(h1_with_anchor('Parameters', 'params', styles))
-    story.append(Paragraph('66 parameters across 15 pages:', styles['body']))
+    story.append(Paragraph('68 parameters across 15 pages:', styles['body']))
 
     param_data = [
         ['Mode', 'Gate Mode', 'MIDI / Free Run / CV', 'CV'],
@@ -1404,7 +1423,7 @@ def build_pdf(output_path=None):
         ['', 'Release', '1.0\u20133200 ms', '200 ms'],
         ['', 'Glide', '0\u20132000 ms', '0 ms'],
         ['Waveform', 'Pulsaret', '0.0\u20139.0', '2.5'],
-        ['', 'Window', '0.0\u20134.0', '0.5'],
+        ['', 'Window', '0.0\u20138.0', '0.5'],
         ['', 'Duty Cycle', '1\u2013100%', '50%'],
         ['', 'Duty Mode', 'Manual / Formant', 'Manual'],
         ['Formants', 'Formant Count', '1\u20133', '2'],
@@ -1428,13 +1447,21 @@ def build_pdf(output_path=None):
         ['', 'File', '(SD card)', '\u2014'],
         ['', 'Sample Rate', '25\u2013400%', '100%'],
         ['Outputs', 'Output L', 'Bus 1\u201364', 'Bus 13'],
+        ['', 'Output L mode', 'Add / Replace', 'Add'],
         ['', 'Output R', 'Bus 1\u201364', 'Bus 14'],
+        ['', 'Output R mode', 'Add / Replace', 'Add'],
         ['Aux Out', 'Trig Out', 'Bus 0\u201364', '0 (none)'],
+        ['', 'Trig Out mode', 'Add / Replace', 'Add'],
         ['', 'Env Out', 'Bus 0\u201364', '0 (none)'],
+        ['', 'Env Out mode', 'Add / Replace', 'Add'],
         ['', 'Pre-clip L', 'Bus 0\u201364', '0 (none)'],
+        ['', 'Pre-clip L mode', 'Add / Replace', 'Add'],
         ['', 'Pre-clip R', 'Bus 0\u201364', '0 (none)'],
+        ['', 'Pre-clip R mode', 'Add / Replace', 'Add'],
         ['', 'Oct Down L', 'Bus 0\u201364', '0 (none)'],
+        ['', 'Oct Down L mode', 'Add / Replace', 'Add'],
         ['', 'Oct Down R', 'Bus 0\u201364', '0 (none)'],
+        ['', 'Oct Down R mode', 'Add / Replace', 'Add'],
     ]
 
     story.append(make_table(
@@ -1467,7 +1494,7 @@ def build_pdf(output_path=None):
         ['Duty CV', 'Input 3', '\u00b15V \u2192 \u00b120%', 'Duty cycle offset added to base'],
         ['Mask CV', 'Input 4', '\u00b15V \u2192 \u00b150%', 'Mask amount offset (bipolar)'],
         ['Pulsaret CV', 'Input 5', '\u00b15V \u2192 full range', 'Pulsaret morph \u00b14.5'],
-        ['Window CV', 'Input 6', '\u00b15V \u2192 full range', 'Window morph \u00b12.0'],
+        ['Window CV', 'Input 6', '\u00b15V \u2192 full range', 'Window morph \u00b14.0'],
         ['Formant 1 CV', 'Input 7', '\u00b15V \u2192 \u00b11000 Hz', 'Formant 1 frequency offset'],
         ['Formant 2 CV', 'Input 8', '\u00b15V \u2192 \u00b11000 Hz', 'Formant 2 frequency offset'],
         ['Formant 3 CV', 'Input 9', '\u00b15V \u2192 \u00b11000 Hz', 'Formant 3 frequency offset'],
@@ -1476,6 +1503,8 @@ def build_pdf(output_path=None):
         ['Glisson CV', 'Input 12', '\u00b15V \u2192 \u00b12.0 oct', 'Glisson depth offset'],
         ['Amplitude CV', '0 (none)', '\u00b15V \u2192 \u00b150%', 'Amplitude offset added to base'],
         ['Pan 1 CV', '0 (none)', '\u00b15V \u2192 \u00b1100%', 'Formant 1 stereo pan position'],
+        ['Pan 2 CV', '0 (none)', '\u00b15V \u2192 \u00b1100%', 'Formant 2 stereo pan position'],
+        ['Pan 3 CV', '0 (none)', '\u00b15V \u2192 \u00b1100%', 'Formant 3 stereo pan position'],
         ['Amp Jit CV', '0 (none)', '\u00b15V \u2192 \u00b150%', 'Amp jitter amount offset'],
         ['Time Jit CV', '0 (none)', '\u00b15V \u2192 \u00b150%', 'Timing jitter amount offset'],
     ]
@@ -1539,9 +1568,9 @@ def build_pdf(output_path=None):
 
     story.append(Paragraph('Pots', styles['h2']))
     pot_data = [
-        ['Left', 'Pulsaret morph', '0.0\u20139.0 (sweeps all 10 waveforms)'],
-        ['Center', 'Window morph', '0.0\u20134.0 (sweeps all 5 windows)'],
-        ['Right', 'Duty Cycle', '1\u2013100%'],
+        ['Pot L', 'Pulsaret morph', '0.0\u20139.0 (sweeps all 10 waveforms)'],
+        ['Pot C', 'Window morph', '0.0\u20138.0 (sweeps all 9 windows)'],
+        ['Pot R', 'Duty Cycle', '1\u2013100%'],
     ]
     story.append(make_table(
         ['Pot', 'Parameter', 'Range'],
@@ -1592,7 +1621,7 @@ def build_pdf(output_path=None):
         styles['body']))
     tips_formant = [
         '<b>Low formants (20\u2013100 Hz)</b>: Deep, subharmonic rumbles. F1=20 Hz produces a thick bass drone.',
-        '<b>Vowel-like tones</b>: F1=270, F2=2300 for "ah"; F1=300, F2=870 for "oo." Experiment with vocal formant charts.',
+        '<b>Vowel-like tones</b>: F1=270, F2=1090 for "ah"; F1=300, F2=870 for "oo." Experiment with vocal formant charts.',
         '<b>Harmonic stacking</b>: Set formants to integer multiples of the fundamental for bright, reinforced harmonics.',
         '<b>Inharmonic/metallic</b>: Non-integer ratios (F1=200, F2=347, F3=511) produce bell-like or metallic timbres.',
         '<b>Formant Track mode</b>: Scales formant frequencies with pitch. A formant at 400 Hz doubles to 800 Hz one octave up, preserving spectral shape across the keyboard.',
@@ -1655,7 +1684,7 @@ def build_pdf(output_path=None):
          'Sinc (3.0), Gaussian, 40%% duty, F1=80 Hz, Free Run, base pitch C1. '
          'Slow LFO on Formant 1 CV for movement. A deep, slowly evolving low-frequency drone.'],
         ['Vocal Pad',
-         'Sine (0.0), Hann, 60%% duty, F1=270, F2=2300, F3=800. 4 voices Maj7. '
+         'Sine (0.0), Hann, 60%% duty, F1=270, F2=1090, F3=800. 4 voices Maj7. '
          'Slow LFO on F1 CV to morph vowels. Lush choral pad with shifting vowel-like timbre.'],
         ['Percussive Texture',
          'Pulse (8.0), Exp Decay, 20%% duty, F1=400. Burst mask 2on/3off. Short attack, '
@@ -1720,9 +1749,8 @@ def build_pdf(output_path=None):
 
 
 if __name__ == '__main__':
-    import tempfile
     # Pass 1: build to temp file to capture page numbers
-    tmp_path = os.path.join(tempfile.gettempdir(), '_spaluter_toc_pass.pdf')
+    tmp_path = os.path.join(os.path.dirname(OUT_PATH), '_spaluter_toc_pass.pdf')
     build_pdf(tmp_path)
     # Pass 2: rebuild with real page numbers now in _anchor_pages
     build_pdf(OUT_PATH)

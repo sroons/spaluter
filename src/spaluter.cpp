@@ -14,7 +14,7 @@
 //
 // Architecture:
 //   DRAM  (~312 KB) — pre-computed pulsaret/window lookup tables + sample buffer
-//   DTC   (~424 B)  — per-sample hot state (4 voices × phase, envelope, DC filter, PRNG)
+//   DTC   (~940 B)  — per-sample hot state (4 voices × phase, envelope, DC filter, PRNG)
 //   SRAM  (~1 KB)   — algorithm struct, cached params, WAV request state
 //
 // Signal chain (per sample):
@@ -58,12 +58,12 @@ static const int kMaxSampleFrames = kSampleBufferSize - kTableSize; // Usable fo
 // DRAM: large pre-computed lookup tables and sample buffer (~312 KB)
 struct _pulsarDRAM {
 	float pulsaretTables[kNumPulsarets][kTableSize]; // 10 waveforms: sine, sine×2, sine×3, sinc, tri, saw, square, formant, pulse, noise
-	float windowTables[kNumWindows][kTableSize];     // 9 windows: rect, gaussian, hann, exp decay, lin decay, tukey, blackman-harris, rev exp, triangle, sinc
+	float windowTables[kNumWindows][kTableSize];     // 9 windows: rect, gaussian, hann, exp decay, lin decay, tukey, blackman-harris, rev exp, triangle
 	float sampleBuffer[kSampleBufferSize];           // WAV sample data for sample-based pulsarets
 };
 
 // Per-voice parameter snapshot — frozen when voice is released
-// so releasing voices maintain their timbral state (~96 bytes)
+// so releasing voices maintain their timbral state (~120 bytes)
 struct _voiceSnapshot {
 	float pulsaretIdx;
 	float windowIdx;
@@ -90,7 +90,7 @@ struct _voiceSnapshot {
 	bool formantTrack;
 };
 
-// Per-voice state (~200 bytes each with snapshot)
+// Per-voice state (~232 bytes each with snapshot)
 struct _pulsarVoice {
 	// Master oscillator
 	float masterPhase;          // 0.0–1.0 sawtooth phase accumulator
@@ -134,12 +134,12 @@ struct _pulsarVoice {
 	_voiceSnapshot snap;
 };
 
-// DTC: performance-critical per-sample audio state (~896 bytes)
+// DTC: performance-critical per-sample audio state (~940 bytes)
 // Lives in Cortex-M7 tightly-coupled memory for single-cycle access.
 static const int kMaxVoices = 4;
 
 struct _pulsarDTC {
-	_pulsarVoice voices[kMaxVoices]; // 4 voice slots (~416 bytes)
+	_pulsarVoice voices[kMaxVoices]; // 4 voice slots (~928 bytes)
 	uint8_t voiceAge[kMaxVoices];    // LRU tracking for voice stealing
 	uint8_t nextVoiceAge;            // Monotonic counter for age assignment
 	bool prevGateHigh;               // Previous gate CV state for edge detection
@@ -150,22 +150,22 @@ struct _pulsarDTC {
 // ============================================================
 // Parameter indices
 //
-// 65 parameters across 16 pages. Indices must match the order
+// 68 parameters across 15 pages. Indices must match the order
 // of entries in the parametersDefault[] array below.
 // ============================================================
 
 enum {
 	// -- Synthesis page --
 	kParamPulsaret,     // 0.0–9.0 (scaling10): morphs between 10 pulsaret waveforms
-	kParamWindow,       // 0.0–4.0 (scaling10): morphs between 5 window functions
+	kParamWindow,       // 0.0–8.0 (scaling10): morphs between 9 window functions
 	kParamDutyCycle,    // 1–100%: fraction of pulse period containing active pulsaret
 	kParamDutyMode,     // Enum: Manual (use Duty Cycle param) or Formant (auto-derive from freq ratio)
 
 	// -- Formants page --
 	kParamFormantCount, // 1–3: number of parallel formant oscillators
-	kParamFormant1Hz,   // 20–8000 Hz: formant 1 frequency
-	kParamFormant2Hz,   // 20–8000 Hz: formant 2 frequency (grayed when count < 2)
-	kParamFormant3Hz,   // 20–8000 Hz: formant 3 frequency (grayed when count < 3)
+	kParamFormant1Hz,   // 20–2000 Hz: formant 1 frequency
+	kParamFormant2Hz,   // 20–2000 Hz: formant 2 frequency (grayed when count < 2)
+	kParamFormant3Hz,   // 20–2000 Hz: formant 3 frequency (grayed when count < 3)
 
 	// -- Masking page --
 	kParamMaskMode,     // Enum: Off / Stochastic (random) / Burst (periodic pattern)
@@ -198,14 +198,14 @@ enum {
 	kParamMaskCV,       // Bus selector: bipolar ±5V → ±50% mask amount offset
 
 	// -- CV Inputs page 2 --
-	kParamPulsaretCV,   // Bus selector: bipolar ±5V → full range sweep
-	kParamWindowCV,     // Bus selector: bipolar ±5V → full range sweep
+	kParamPulsaretCV,   // Bus selector: bipolar ±5V → ±4.5 index offset
+	kParamWindowCV,     // Bus selector: bipolar ±5V → ±4.0 index offset
 	kParamGateCV,       // Bus selector: gate input (>2.5V = high)
 
 	// -- CV Inputs page 3 --
-	kParamFormant1CV,   // Bus selector: bipolar ±5V → ±4000 Hz offset
-	kParamFormant2CV,   // Bus selector: bipolar ±5V → ±4000 Hz offset
-	kParamFormant3CV,   // Bus selector: bipolar ±5V → ±4000 Hz offset
+	kParamFormant1CV,   // Bus selector: bipolar ±5V → ±1000 Hz offset
+	kParamFormant2CV,   // Bus selector: bipolar ±5V → ±1000 Hz offset
+	kParamFormant3CV,   // Bus selector: bipolar ±5V → ±1000 Hz offset
 
 	// -- CV Inputs page 4 --
 	kParamPan1CV,       // Bus selector: bipolar ±5V → ±100% pan offset
@@ -221,7 +221,7 @@ enum {
 	kParamOutputR,      // Bus selector: right audio output
 	kParamOutputRMode,  // Output mode: 0=add, 1=replace
 
-	kParamGateMode,     // Enum: MIDI / Free Run
+	kParamGateMode,     // Enum: MIDI / Free Run / CV
 	kParamBasePitch,    // MIDI note 0-127, default 69 (A4)
 
 	// -- Polyphony page --
@@ -281,8 +281,6 @@ static char const * const enumChordType[] = {
 // temperament semitone ratios: 2^(st/12).
 // ============================================================
 
-#define ST(n) (1.0f)  // placeholder — filled by initChordRatios()
-
 static const int kNumChordTypes = 14;
 static float chordRatios[kNumChordTypes][kMaxVoices];
 
@@ -323,8 +321,6 @@ static void initChordRatios()
 		for (int v = 0; v < kMaxVoices; ++v)
 			chordRatios[4 + i][v] = st(chords[i][v]);
 }
-
-#undef ST
 
 // ============================================================
 // Parameter definitions
@@ -489,7 +485,7 @@ struct _pulsarAlgorithm : public _NT_algorithm
 
 	// Cached parameter values (converted from int16 to float in parameterChanged)
 	float pulsaretIndex;              // 0.0–9.0: pulsaret morph position
-	float windowIndex;                // 0.0–4.0: window morph position
+	float windowIndex;                // 0.0–8.0: window morph position
 	float dutyCycle;                  // 0.01–1.0: pulse duty cycle
 	int dutyMode;                     // 0=manual, 1=formant-derived
 	int formantCount;                 // 1–3: active formant count
@@ -634,12 +630,16 @@ static void generatePulsaretTables(float tables[][kTableSize])
 	}
 }
 
-// Window functions (5 tables):
+// Window functions (9 tables):
 //   0: rectangular  — flat 1.0 (no windowing)
 //   1: gaussian     — exp(-0.5 * ((p-0.5)/0.3)^2), sigma=0.3
 //   2: hann         — 0.5 * (1 - cos(2*pi*p)), classic smooth window
 //   3: exp decay    — exp(-4*p), sharp attack with gradual fade
 //   4: linear decay — 1-p, simple ramp down
+//   5: tukey        — tapered cosine (alpha=0.5), flat top with smooth edges
+//   6: blackman-harris — 4-term low-sidelobe window
+//   7: rev exp      — exp(-4*(1-p)), slow swell to sharp cutoff
+//   8: triangle     — rises linearly to 1.0 at midpoint, then falls linearly
 static void generateWindowTables(float tables[][kTableSize])
 {
 	for (int i = 0; i < kTableSize; ++i)
@@ -1956,8 +1956,8 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 							int total = vs.burstOn + vs.burstOff;
 							if (total > 0)
 							{
-								voice.burstCounter = (voice.burstCounter + 1) % (uint32_t)total;
 								maskGain = (voice.burstCounter < (uint32_t)vs.burstOn) ? 1.0f : 0.0f;
+								voice.burstCounter = (voice.burstCounter + 1) % (uint32_t)total;
 							}
 						}
 						for (int f = 0; f < vs.formantCount; ++f)
@@ -2247,18 +2247,40 @@ bool draw(_NT_algorithm* self)
 	}
 
 	// --- Duty cycle preview (pulsaret * window, centered in period) ---
+	//
+	// The active burst is drawn bright, while the surrounding silence is drawn
+	// as a dim dotted baseline so it reads as "no sound" rather than as a
+	// waveform that happens to sit at zero. Dim vertical ticks mark the burst
+	// boundaries, making the active fraction of the period explicit.
 	NT_drawShapeI(kNT_box, x0_duty - 1, viewY - viewH / 2 - 1,
 		x0_duty + viewW + 1, viewY + viewH / 2 + 1, 3);
 	{
 		float dutyStart = (1.0f - duty) * 0.5f;
 		float formantRatio = pThis->displayFormantHz[0] /
 			(dtc->voices[0].fundamentalHz > 0.1f ? dtc->voices[0].fundamentalHz : 0.1f);
+
+		// Burst boundary ticks — drawn first so the waveform overdraws them.
+		// Skipped at full duty, where there is no silence to delimit and the
+		// ticks would just double up the box border.
+		if (duty < 0.995f)
+		{
+			int tickTop = viewY - viewH / 2;
+			int tickBot = viewY + viewH / 2;
+			int xs = x0_duty + (int)(dutyStart * viewW + 0.5f);
+			int xe = x0_duty + (int)((dutyStart + duty) * viewW + 0.5f);
+			if (xe > x0_duty + viewW) xe = x0_duty + viewW;
+			NT_drawShapeI(kNT_line, xs, tickTop, xs, tickBot, 5);
+			NT_drawShapeI(kNT_line, xe, tickTop, xe, tickBot, 5);
+		}
+
 		int prevY = viewY;
+		bool prevActive = false;
 		for (int x = 0; x < viewW; ++x)
 		{
 			float p = (float)x / (float)viewW;
+			bool active = (p >= dutyStart && p < dutyStart + duty);
 			float s = 0.0f;
-			if (p >= dutyStart && p < dutyStart + duty)
+			if (active)
 			{
 				float pp = (p - dutyStart) / duty;
 				float tp = pp * formantRatio;
@@ -2268,9 +2290,18 @@ bool draw(_NT_algorithm* self)
 				s *= readWindowMorph(dram->windowTables, windowIdx, pp);
 			}
 			int pixY = viewY - (int)(s * viewH / 2);
-			if (x > 0)
+			if (x > 0 && (active || prevActive))
+			{
+				// Bright trace through the burst, including its rising/falling edges
 				NT_drawShapeI(kNT_line, x0_duty + x - 1, prevY, x0_duty + x, pixY, 15);
+			}
+			else if (!active && !(x & 1))
+			{
+				// Dotted baseline marks silence (every other pixel)
+				NT_drawShapeI(kNT_line, x0_duty + x, viewY, x0_duty + x, viewY, 4);
+			}
 			prevY = pixY;
+			prevActive = active;
 		}
 	}
 
@@ -2415,8 +2446,8 @@ bool draw(_NT_algorithm* self)
 // standard disting NT page navigation behavior.
 //
 //   Pot L:             Pulsaret morph (0.0–9.0)
-//   Pot C:             Duty Cycle (1–100%)
-//   Pot R:             Window morph (0.0–4.0)
+//   Pot C:             Window morph (0.0–8.0)
+//   Pot R:             Duty Cycle (1–100%)
 //   Encoder Button L:  Cycle mask mode (Off → Stochastic → Burst)
 //   Encoder Button R:  Cycle formant count (1 → 2 → 3)
 //   Button 3:          Cycle voice count (1 → 2 → 3 → 4)
@@ -2444,7 +2475,7 @@ void customUi(_NT_algorithm* self, const _NT_uiData& data)
 		NT_setParameterFromUi(algIdx, kParamPulsaret + offset, (int16_t)value);
 	}
 
-	// Pot C: Window morph (0.0–4.0, stored as 0–40 with scaling10)
+	// Pot C: Window morph (0.0–8.0, stored as 0–80 with scaling10)
 	if (data.controls & kNT_potC)
 	{
 		int value = (int)(data.pots[1] * 80.0f + 0.5f);
@@ -2490,9 +2521,9 @@ void customUi(_NT_algorithm* self, const _NT_uiData& data)
 void setupUi(_NT_algorithm* self, _NT_float3& pots)
 {
 	// Sync pot soft-takeover positions
-	pots[0] = self->v[kParamPulsaret] / 90.0f;  // Pulsaret
-	pots[1] = (self->v[kParamDutyCycle] - 1) / 99.0f;  // Duty Cycle
-	pots[2] = self->v[kParamWindow] / 80.0f;  // Window
+	pots[0] = self->v[kParamPulsaret] / 90.0f;         // Pot L: Pulsaret
+	pots[1] = self->v[kParamWindow] / 80.0f;           // Pot C: Window
+	pots[2] = (self->v[kParamDutyCycle] - 1) / 99.0f;  // Pot R: Duty Cycle
 }
 
 // ============================================================

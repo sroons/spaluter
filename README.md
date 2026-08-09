@@ -55,7 +55,7 @@ Roads also introduced **masking** — selectively muting pulses within the train
 ## Features
 
 - **10 pulsaret waveforms** — sine, sine×2, sine×3, sinc, triangle, saw, square, formant, pulse, noise — with continuous morphing between adjacent shapes
-- **5 window functions** — rectangular, Gaussian, Hann, exponential decay, linear decay — with continuous morphing
+- **9 window functions** — rectangular, Gaussian, Hann, exponential decay, linear decay, Tukey, Blackman-Harris, reverse exponential, triangle — with continuous morphing
 - **1–3 parallel formants** with independent frequency control, per-formant CV modulation, and constant-power stereo panning
 - **Masking** — stochastic (probability-based) and burst (on/off pattern) modes for rhythmic textures, with optional per-formant independent masking for richer spectral variation
 - **Amplitude jitter** — per-pulse random gain reduction (0–100%) for organic variation, from subtle inconsistency to fragile, unpredictable textures
@@ -67,7 +67,7 @@ Roads also introduced **masking** — selectively muting pulses within the train
 - **CV mode** (default) — Rings-style polyphonic triggering from a single trigger+pitch CV pair: each rising edge allocates a new voice while previous voices ring out through their release envelopes with frozen parameters, so only the newest voice responds to knob/CV changes
 - **Free Run mode** — generates sound immediately without MIDI; pitch set by Base Pitch parameter + Pitch CV; per-pulse AR envelope retriggers on every pulse
 - **Per-pulse AR envelope** in Free Run mode (retriggers each pulse, release at period midpoint); standard ASR in MIDI and CV modes
-- **15 bipolar CV inputs** — pitch (1V/oct), trigger, duty, mask, pulsaret morph, window morph, formant 1/2/3 Hz, attack, release, glisson — first 12 inputs assigned by default; amplitude, pan, amp jitter, timing jitter CVs default to none
+- **18 CV inputs** — pitch (1V/oct), trigger, duty, mask, pulsaret morph, window morph, formant 1/2/3 Hz, amplitude, pan 1/2/3, attack, release, glisson, amp/timing jitter — first 12 inputs assigned by default; amplitude, pan, amp jitter, timing jitter CVs default to none
 - **Sub-octave output** — stereo octave-down via analog-style frequency divider, routable to any bus for layering a sub one octave below the fundamental
 - **Aux outputs** — pulse trigger, envelope follower, and pre-clip stereo taps — all bus-routable, disabled by default
 - **Sample-based pulsarets** — load WAV files from SD card as custom pulsaret waveforms with adjustable playback rate
@@ -76,7 +76,7 @@ Roads also introduced **masking** — selectively muting pulses within the train
 
 ## Parameters
 
-66 parameters across 15 pages, organized into 9 groups:
+68 parameters across 15 pages, organized into 9 groups:
 
 | Page | Parameter | Range | Default |
 |------|-----------|-------|---------|
@@ -91,7 +91,7 @@ Roads also introduced **masking** — selectively muting pulses within the train
 | | Release | 1.0–3200 ms | 200 ms |
 | | Glide | 0–2000 ms | 0 ms |
 | **Waveform** | Pulsaret | 0.0–9.0 | 2.5 |
-| | Window | 0.0–4.0 | 0.5 |
+| | Window | 0.0–8.0 | 0.5 |
 | | Duty Cycle | 1–100% | 50% |
 | | Duty Mode | Manual / Formant | Manual |
 | **Formants** | Formant Count | 1–3 | 2 |
@@ -111,8 +111,8 @@ Roads also introduced **masking** — selectively muting pulses within the train
 | | Pan 2 | -100 to +100 | -50 |
 | | Pan 3 | -100 to +100 | +50 |
 | **Sample** | Use Sample | Off / On | Off |
-| | Folder | (SD card) | — |
-| | File | (SD card) | — |
+| | Folder | 0–32767 (SD card) | 0 |
+| | File | 0–32767 (SD card) | 0 |
 | | Sample Rate | 25–400% | 100% |
 | **Outputs** | Output L | Bus 1–64 | Bus 13 |
 | | Output R | Bus 1–64 | Bus 14 |
@@ -122,13 +122,13 @@ Roads also introduced **masking** — selectively muting pulses within the train
 | | Pre-clip R | Bus 0–64 | 0 (none) |
 | | Oct Down L | Bus 0–64 | 0 (none) |
 | | Oct Down R | Bus 0–64 | 0 (none) |
-| **CV Inputs** | *(see CV table below — 15 inputs across 5 pages)* | | |
+| **CV Inputs** | *(see CV table below — 18 inputs across 5 pages)* | | |
 
 Unused parameters are automatically grayed out based on context (e.g., Formant 2/3 Hz when count is 1, Burst parameters when mask mode is not Burst, Indep Mask when masking is off, Chord Type in MIDI/CV mode, Voice Count in CV mode).
 
 ## CV Inputs
 
-All CV inputs are **bipolar** (±5V). Each is routable to any of the 64 buses (1–12 inputs, 13–20 outputs, 21–64 aux), or 0 for none.
+Except for Pitch CV and Trigger CV, modulation CV inputs are **bipolar** (±5V). Each is routable to any of the 64 buses (1–12 inputs, 13–20 outputs, 21–64 aux), or 0 for none.
 
 | CV Input | Default Bus | Scaling | Effect |
 |----------|-------------|---------|--------|
@@ -137,7 +137,7 @@ All CV inputs are **bipolar** (±5V). Each is routable to any of the 64 buses (1
 | Duty CV | Input 3 | ±5V → ±20% offset | Duty cycle offset added to base |
 | Mask CV | Input 4 | ±5V → ±50% offset | Mask amount offset (bipolar) |
 | Pulsaret CV | Input 5 | ±5V → full range | Sweeps pulsaret morph ±4.5 |
-| Window CV | Input 6 | ±5V → full range | Sweeps window morph ±2.0 |
+| Window CV | Input 6 | ±5V → full range | Sweeps window morph ±4.0 |
 | Formant 1 CV | Input 7 | ±5V → ±1000 Hz | Formant 1 frequency offset |
 | Formant 2 CV | Input 8 | ±5V → ±1000 Hz | Formant 2 frequency offset |
 | Formant 3 CV | Input 9 | ±5V → ±1000 Hz | Formant 3 frequency offset |
@@ -146,6 +146,8 @@ All CV inputs are **bipolar** (±5V). Each is routable to any of the 64 buses (1
 | Glisson CV | Input 12 | ±5V → ±2.0 oct | Glisson depth offset |
 | Amplitude CV | 0 (none) | ±5V → ±50% offset | Amplitude offset added to base |
 | Pan 1 CV | 0 (none) | ±5V → ±100% offset | Formant 1 stereo pan position |
+| Pan 2 CV | 0 (none) | ±5V → ±100% offset | Formant 2 stereo pan position |
+| Pan 3 CV | 0 (none) | ±5V → ±100% offset | Formant 3 stereo pan position |
 | Amp Jit CV | 0 (none) | ±5V → ±50% offset | Amp jitter amount offset |
 | Time Jit CV | 0 (none) | ±5V → ±50% offset | Timing jitter amount offset |
 
@@ -269,7 +271,7 @@ Encoders and buttons not listed below keep their standard disting NT behavior.
 | Pot | Parameter | Range |
 |-----|-----------|-------|
 | Left | Pulsaret morph | 0.0–9.0 (sweeps all 10 waveforms) |
-| Center | Window morph | 0.0–4.0 (sweeps all 5 windows) |
+| Center | Window morph | 0.0–8.0 (sweeps all 9 windows) |
 | Right | Duty Cycle | 1–100% |
 
 ### Buttons
@@ -325,7 +327,7 @@ The custom display (256×64 px) shows three real-time waveform views and synthes
 3. Shape the sound on the **Waveform** page by sweeping Pulsaret and Window morphing controls (or use the pots)
 4. Add parallel formants on the **Formants** page and spread them with **Panning**
 5. Create rhythmic textures with **Texture** (stochastic or burst masking, amp/timing jitter, glisson)
-6. Patch CV sources into any of the 15 inputs — first 12 are assigned by default, effects CVs on a separate page
+6. Patch CV sources into any of the 18 inputs — first 12 are assigned by default, effects CVs on a separate page
 7. Add voices on the **Mode** page — in Free Run mode, choose a **Chord Type** to stack intervals; in MIDI mode, play chords
 8. For MIDI control, switch **Gate Mode** to MIDI on the **Mode** page and set your MIDI channel
 9. For CV voice triggering, switch **Gate Mode** to CV, set **Trigger CV** on the **CV Inputs** page — see [CV Mode](#cv-mode-rings-style-voice-triggering) for full setup
@@ -377,6 +379,10 @@ The window shapes how each pulsaret fades in and out.
 - **Hann (2.0)** — similar to Gaussian with a slightly flatter top. Good all-rounder.
 - **Exponential decay (3.0)** — plucked or percussive attacks that ring out.
 - **Linear decay (4.0)** — simpler percussive shape.
+- **Tukey (5.0)** — flat-top tapered cosine with smooth edges; keeps body while reducing clicks.
+- **Blackman-Harris (6.0)** — very smooth, very low-sidelobe shape for darker, cleaner tones.
+- **Reverse exponential (7.0)** — slow swell into a sharp cutoff, useful for bowed or reversed accents.
+- **Triangle (8.0)** — linear fade in and out, a balanced, direct envelope.
 - Pair **exponential decay + sinc pulsaret** for a classic plucked pulsar tone.
 - Glisson interacts with the window: exponential decay makes the sweep audible mainly at the attack (where the window is loudest), while Hann spreads it evenly.
 
