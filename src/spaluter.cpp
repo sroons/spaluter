@@ -27,6 +27,7 @@
 //
 // Hardware controls:
 //   Pot L = pulsaret morph, Pot C = window morph, Pot R = duty cycle
+//   Pot press + turn = formant 1/2/3 Hz; pot press alone = formant 1/2/3 on/off
 //   Encoder button L = cycle mask mode, Encoder button R = cycle formant count
 //
 // ============================================================
@@ -254,6 +255,11 @@ enum {
 	kParamOctDownR,     // Bus selector: octave-down right output
 	kParamOctDownRMode, // Output mode
 
+	// -- Formants page (appended to preserve preset parameter indices) --
+	kParamFormant1On,   // Enum: Off/On — mutes formant 1 without changing Formant Count
+	kParamFormant2On,   // Enum: Off/On — mutes formant 2 (grayed when count < 2)
+	kParamFormant3On,   // Enum: Off/On — mutes formant 3 (grayed when count < 3)
+
 	kNumParams,
 };
 
@@ -418,6 +424,11 @@ static const _NT_parameter parametersDefault[] = {
 	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Pre-clip R", 0, 0 )
 	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Oct Down L", 0, 0 )
 	NT_PARAMETER_AUDIO_OUTPUT_WITH_MODE( "Oct Down R", 0, 0 )
+
+	// Formant enables (appended to keep earlier parameter indices stable)
+	{ .name = "Formant 1 On", .min = 0,   .max = 1,    .def = 1,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumOnOff },
+	{ .name = "Formant 2 On", .min = 0,   .max = 1,    .def = 1,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumOnOff },
+	{ .name = "Formant 3 On", .min = 0,   .max = 1,    .def = 1,   .unit = kNT_unitEnum,    .scaling = kNT_scalingNone, .enumStrings = enumOnOff },
 };
 
 // ============================================================
@@ -427,7 +438,7 @@ static const _NT_parameter parametersDefault[] = {
 static const uint8_t pageMode[]      = { kParamGateMode, kParamVoiceCount, kParamChordType, kParamMidiCh, kParamBasePitch };
 static const uint8_t pageLevel[]     = { kParamAmplitude, kParamDrive, kParamAttack, kParamRelease, kParamGlide };
 static const uint8_t pageWaveform[]  = { kParamPulsaret, kParamWindow, kParamDutyCycle, kParamDutyMode };
-static const uint8_t pageFormants[]  = { kParamFormantCount, kParamFormant1Hz, kParamFormant2Hz, kParamFormant3Hz, kParamFormantTrack };
+static const uint8_t pageFormants[]  = { kParamFormantCount, kParamFormant1Hz, kParamFormant1On, kParamFormant2Hz, kParamFormant2On, kParamFormant3Hz, kParamFormant3On, kParamFormantTrack };
 static const uint8_t pageTexture1[]  = { kParamMaskMode, kParamMaskAmount, kParamBurstOn, kParamBurstOff, kParamPerFormantMask };
 static const uint8_t pageTexture2[]  = { kParamAmpJitter, kParamTimingJitter, kParamGlisson };
 static const uint8_t pagePanning[]   = { kParamPan1, kParamPan2, kParamPan3 };
@@ -490,6 +501,7 @@ struct _pulsarAlgorithm : public _NT_algorithm
 	int dutyMode;                     // 0=manual, 1=formant-derived
 	int formantCount;                 // 1–3: active formant count
 	float formantHz[3];               // Formant frequencies in Hz
+	float formantEnable[3];           // 0.0 or 1.0: per-formant mute (Formant N On)
 	int maskMode;                     // 0=off, 1=stochastic, 2=burst
 	float maskAmount;                 // 0.0–1.0: stochastic mask probability
 	int burstOn;                      // Burst pattern: consecutive sounding pulses
@@ -534,6 +546,14 @@ struct _pulsarAlgorithm : public _NT_algorithm
 
 	// Guard against reentrant NT_setParameterFromUi during initial param setup
 	bool initialized;                 // Set true after first step() call
+
+	// Pot gesture state (customUi): each pot below the screen is also a button,
+	// giving three gestures — turn, press, and press+turn.
+	float potLast[3];                 // Last seen pot position (0.0–1.0)
+	float potShiftValue[3];           // Float accumulator for press+turn edits (formant Hz)
+	bool potPressed[3];               // Pot button currently held
+	bool potMovedWhilePressed[3];     // Pot turned while held (suppresses the press action)
+	bool potTakeover[3];              // Awaiting soft takeover before plain turns resume
 };
 
 // ============================================================
@@ -811,6 +831,9 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 	alg->formantHz[0] = 20.0f;
 	alg->formantHz[1] = 200.0f;
 	alg->formantHz[2] = 400.0f;
+	alg->formantEnable[0] = 1.0f;
+	alg->formantEnable[1] = 1.0f;
+	alg->formantEnable[2] = 1.0f;
 	alg->maskMode = 0;
 	alg->maskAmount = 0.5f;
 	alg->burstOn = 4;
@@ -849,6 +872,16 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 	alg->awaitingCallback = false;
 	alg->sampleLoadedFrames = 0;
 	alg->initialized = false;
+
+	// Pot gesture state
+	for (int i = 0; i < 3; ++i)
+	{
+		alg->potLast[i] = 0.0f;
+		alg->potShiftValue[i] = 0.0f;
+		alg->potPressed[i] = false;
+		alg->potMovedWhilePressed[i] = false;
+		alg->potTakeover[i] = false;
+	}
 
 	// Setup WAV request
 	alg->wavRequest.callback = wavCallback;
@@ -986,7 +1019,18 @@ void parameterChanged(_NT_algorithm* self, int p)
 			NT_setParameterGrayedOut(algIdx, kParamFormant3Hz + offset, pThis->formantCount < 3);
 			NT_setParameterGrayedOut(algIdx, kParamPan2 + offset, pThis->formantCount < 2);
 			NT_setParameterGrayedOut(algIdx, kParamPan3 + offset, pThis->formantCount < 3);
+			NT_setParameterGrayedOut(algIdx, kParamFormant2On + offset, pThis->formantCount < 2);
+			NT_setParameterGrayedOut(algIdx, kParamFormant3On + offset, pThis->formantCount < 3);
 		}
+		break;
+	case kParamFormant1On:
+		pThis->formantEnable[0] = pThis->v[kParamFormant1On] ? 1.0f : 0.0f;
+		break;
+	case kParamFormant2On:
+		pThis->formantEnable[1] = pThis->v[kParamFormant2On] ? 1.0f : 0.0f;
+		break;
+	case kParamFormant3On:
+		pThis->formantEnable[2] = pThis->v[kParamFormant3On] ? 1.0f : 0.0f;
 		break;
 	case kParamFormant1Hz:
 		pThis->formantHz[0] = (float)pThis->v[kParamFormant1Hz];
@@ -1710,8 +1754,11 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4)
 			if (p > 1.0f) p = 1.0f;
 		}
 		float angle = (p + 1.0f) * 0.25f * (float)M_PI; // 0..pi/2
-		panL[f] = cosf(angle);
-		panR[f] = sinf(angle);
+		// Per-formant enable folded into the pan gains: a disabled formant
+		// contributes silence without adding any per-sample cost.
+		float en = pThis->formantEnable[f];
+		panL[f] = cosf(angle) * en;
+		panR[f] = sinf(angle) * en;
 	}
 
 	// Precompute manual duty per formant (always compute all 3 for snapshots)
@@ -2409,6 +2456,7 @@ bool draw(_NT_algorithm* self)
 		for (int f = 0; f < 3; ++f)
 		{
 			int brightness = (f < formantCount) ? 15 : 4;
+			if (pThis->formantEnable[f] == 0.0f) brightness = 4;
 			int xPos = waveX + f * 56;
 
 			// Label: "F1" "F2" "F3"
@@ -2441,17 +2489,28 @@ bool draw(_NT_algorithm* self)
 // ============================================================
 // Custom UI — hardware pot and encoder button mappings
 //
-// Overrides 3 pots and 2 encoder buttons for direct hands-on
-// control. All other controls (encoders, buttons 1–4) retain
-// standard disting NT page navigation behavior.
+// Overrides 3 pots (including their button presses) and 2 encoder
+// buttons for direct hands-on control. All other controls (encoders,
+// buttons 1–4) retain standard disting NT page navigation behavior.
 //
-//   Pot L:             Pulsaret morph (0.0–9.0)
-//   Pot C:             Window morph (0.0–8.0)
-//   Pot R:             Duty Cycle (1–100%)
+// Each pot below the screen supports three gestures:
+//
+//   Pot        Turn                 Press + turn      Press (no turn)
+//   ---------  -------------------  ----------------  ---------------
+//   Pot L      Pulsaret (0.0–9.0)   Formant 1 Hz      Formant 1 on/off
+//   Pot C      Window (0.0–8.0)     Formant 2 Hz      Formant 2 on/off
+//   Pot R      Duty Cycle (1–100%)  Formant 3 Hz      Formant 3 on/off
+//
 //   Encoder Button L:  Cycle mask mode (Off → Stochastic → Burst)
 //   Encoder Button R:  Cycle formant count (1 → 2 → 3)
 //   Button 3:          Cycle voice count (1 → 2 → 3 → 4)
 //   Button 4:          Cycle chord type (14 options)
+//
+// Plain turns map the pot position absolutely. Press+turn is relative
+// (delta based), which leaves the pot away from where the unshifted
+// parameter sits, so on release the pot is re-armed for soft takeover:
+// plain turns are ignored until the pot passes back through the
+// unshifted parameter's own position.
 //
 // setupUi() syncs pot soft-takeover positions so pots don't
 // jump when first touched after switching to this algorithm.
@@ -2459,34 +2518,127 @@ bool draw(_NT_algorithm* self)
 
 uint32_t hasCustomUi(_NT_algorithm* self)
 {
-	return kNT_potL | kNT_potC | kNT_potR | kNT_encoderButtonL | kNT_encoderButtonR | kNT_button3 | kNT_button4;
+	return kNT_potL | kNT_potC | kNT_potR
+	     | kNT_potButtonL | kNT_potButtonC | kNT_potButtonR
+	     | kNT_encoderButtonL | kNT_encoderButtonR | kNT_button3 | kNT_button4;
+}
+
+// Pot position (0.0–1.0) currently representing the unshifted parameter
+static float potPosForUnshifted(_NT_algorithm* self, int pot)
+{
+	switch (pot)
+	{
+	case 0:  return self->v[kParamPulsaret] / 90.0f;
+	case 1:  return self->v[kParamWindow] / 80.0f;
+	default: return (self->v[kParamDutyCycle] - 1) / 99.0f;
+	}
+}
+
+// Apply an absolute pot position to the unshifted parameter
+static void setUnshiftedFromPot(int algIdx, uint32_t offset, int pot, float pos)
+{
+	switch (pot)
+	{
+	case 0:
+		NT_setParameterFromUi(algIdx, kParamPulsaret + offset, (int16_t)(int)(pos * 90.0f + 0.5f));
+		break;
+	case 1:
+		NT_setParameterFromUi(algIdx, kParamWindow + offset, (int16_t)(int)(pos * 80.0f + 0.5f));
+		break;
+	default:
+		NT_setParameterFromUi(algIdx, kParamDutyCycle + offset, (int16_t)((int)(pos * 99.0f + 0.5f) + 1));
+		break;
+	}
 }
 
 void customUi(_NT_algorithm* self, const _NT_uiData& data)
 {
+	_pulsarAlgorithm* pThis = reinterpret_cast<_pulsarAlgorithm*>(self);
 	int algIdx = NT_algorithmIndex(self);
 	if (algIdx < 0) return;
 	uint32_t offset = NT_parameterOffset();
 
-	// Pot L: Pulsaret morph (0.0–9.0, stored as 0–90 with scaling10)
-	if (data.controls & kNT_potL)
-	{
-		int value = (int)(data.pots[0] * 90.0f + 0.5f);
-		NT_setParameterFromUi(algIdx, kParamPulsaret + offset, (int16_t)value);
-	}
+	static const uint16_t potBits[3]       = { kNT_potL, kNT_potC, kNT_potR };
+	static const uint16_t potButtonBits[3] = { kNT_potButtonL, kNT_potButtonC, kNT_potButtonR };
+	static const uint8_t  formantHzParam[3]  = { kParamFormant1Hz, kParamFormant2Hz, kParamFormant3Hz };
+	static const uint8_t  formantOnParam[3]  = { kParamFormant1On, kParamFormant2On, kParamFormant3On };
 
-	// Pot C: Window morph (0.0–8.0, stored as 0–80 with scaling10)
-	if (data.controls & kNT_potC)
+	for (int i = 0; i < 3; ++i)
 	{
-		int value = (int)(data.pots[1] * 80.0f + 0.5f);
-		NT_setParameterFromUi(algIdx, kParamWindow + offset, (int16_t)value);
-	}
+		bool held     = (data.controls & potButtonBits[i]) != 0;
+		bool wasHeld  = (data.lastButtons & potButtonBits[i]) != 0;
+		bool moved    = (data.controls & potBits[i]) != 0;
+		float pos     = data.pots[i];
 
-	// Pot R: Duty Cycle (1–100%)
-	if (data.controls & kNT_potR)
-	{
-		int value = (int)(data.pots[2] * 99.0f + 0.5f) + 1;
-		NT_setParameterFromUi(algIdx, kParamDutyCycle + offset, (int16_t)value);
+		// Press edge: start a shifted (press+turn) gesture
+		if (held && !wasHeld)
+		{
+			pThis->potPressed[i] = true;
+			pThis->potMovedWhilePressed[i] = false;
+			pThis->potLast[i] = pos;
+			pThis->potShiftValue[i] = (float)self->v[formantHzParam[i]];
+		}
+
+		if (held)
+		{
+			// Press + turn: relative edit of formant frequency (20–2000 Hz).
+			// A float accumulator preserves sub-Hz motion across callbacks.
+			if (moved)
+			{
+				float delta = pos - pThis->potLast[i];
+				pThis->potLast[i] = pos;
+				if (delta > 0.002f || delta < -0.002f)
+					pThis->potMovedWhilePressed[i] = true;
+
+				float value = pThis->potShiftValue[i] + delta * 1980.0f;
+				if (value < 20.0f)   value = 20.0f;
+				if (value > 2000.0f) value = 2000.0f;
+				pThis->potShiftValue[i] = value;
+				NT_setParameterFromUi(algIdx, formantHzParam[i] + offset, (int16_t)(int)(value + 0.5f));
+			}
+		}
+		else
+		{
+			// Release edge
+			if (wasHeld)
+			{
+				pThis->potPressed[i] = false;
+				if (pThis->potMovedWhilePressed[i])
+				{
+					// Pot moved away from the unshifted value — require takeover
+					pThis->potTakeover[i] = true;
+				}
+				else
+				{
+					// Clean press: toggle formant on/off
+					int16_t on = self->v[formantOnParam[i]] ? 0 : 1;
+					NT_setParameterFromUi(algIdx, formantOnParam[i] + offset, on);
+				}
+				pThis->potLast[i] = pos;
+				continue;
+			}
+
+			// Plain turn
+			if (moved)
+			{
+				if (pThis->potTakeover[i])
+				{
+					// Resume once the pot crosses (or lands on) the parameter's position
+					float target = potPosForUnshifted(self, i);
+					float prev = pThis->potLast[i];
+					float dPrev = prev - target;
+					float dNow  = pos - target;
+					if ((dPrev <= 0.0f && dNow >= 0.0f) || (dPrev >= 0.0f && dNow <= 0.0f) ||
+					    (dNow < 0.01f && dNow > -0.01f))
+						pThis->potTakeover[i] = false;
+				}
+
+				if (!pThis->potTakeover[i])
+					setUnshiftedFromPot(algIdx, offset, i, pos);
+
+				pThis->potLast[i] = pos;
+			}
+		}
 	}
 
 	// Encoder Button L: cycle mask mode (Off -> Stochastic -> Burst -> Off)
@@ -2520,10 +2672,21 @@ void customUi(_NT_algorithm* self, const _NT_uiData& data)
 
 void setupUi(_NT_algorithm* self, _NT_float3& pots)
 {
+	_pulsarAlgorithm* pThis = static_cast<_pulsarAlgorithm*>(self);
+
 	// Sync pot soft-takeover positions
 	pots[0] = self->v[kParamPulsaret] / 90.0f;         // Pot L: Pulsaret
 	pots[1] = self->v[kParamWindow] / 80.0f;           // Pot C: Window
 	pots[2] = (self->v[kParamDutyCycle] - 1) / 99.0f;  // Pot R: Duty Cycle
+
+	// Reset gesture tracking so a stale press/takeover state doesn't persist
+	for (int i = 0; i < 3; ++i)
+	{
+		pThis->potLast[i] = pots[i];
+		pThis->potPressed[i] = false;
+		pThis->potMovedWhilePressed[i] = false;
+		pThis->potTakeover[i] = false;
+	}
 }
 
 // ============================================================

@@ -4,6 +4,8 @@ A [pulsar synthesis](https://en.wikipedia.org/wiki/Pulsar_synthesis) instrument 
 
 [![Demo video](https://img.youtube.com/vi/JfdUQbmtTNU/maxresdefault.jpg)](https://youtu.be/JfdUQbmtTNU)
 
+[![Demo video](https://img.youtube.com/vi/LO9K--yhONU/maxresdefault.jpg)](https://youtu.be/LO9K--yhONU)
+
 ## What Is Pulsar Synthesis?
 
 ### Short Version
@@ -96,8 +98,11 @@ Roads also introduced **masking** — selectively muting pulses within the train
 | | Duty Mode | Manual / Formant | Manual |
 | **Formants** | Formant Count | 1–3 | 2 |
 | | Formant 1 Hz | 20–2000 Hz | 20 Hz |
+| | Formant 1 On | Off / On | On |
 | | Formant 2 Hz | 20–2000 Hz | 200 Hz |
+| | Formant 2 On | Off / On | On |
 | | Formant 3 Hz | 20–2000 Hz | 400 Hz |
+| | Formant 3 On | Off / On | On |
 | | Formant Track | Fixed / Track | Fixed |
 | **Texture** | Mask Mode | Off / Stochastic / Burst | Off |
 | | Mask Amount | 0–100% | 50% |
@@ -268,18 +273,36 @@ Encoders and buttons not listed below keep their standard disting NT behavior.
 
 ### Pots
 
-| Pot | Parameter | Range |
-|-----|-----------|-------|
-| Left | Pulsaret morph | 0.0–9.0 (sweeps all 10 waveforms) |
-| Center | Window morph | 0.0–8.0 (sweeps all 9 windows) |
-| Right | Duty Cycle | 1–100% |
+Each pot below the screen is also a button, giving three gestures per pot:
+
+| Pot | Turn | Press + turn | Press (no turn) |
+|-----|------|--------------|-----------------|
+| Left | Pulsaret morph (0.0–9.0) | Formant 1 Hz (20–2000) | Formant 1 On/Off |
+| Center | Window morph (0.0–8.0) | Formant 2 Hz (20–2000) | Formant 2 On/Off |
+| Right | Duty Cycle (1–100%) | Formant 3 Hz (20–2000) | Formant 3 On/Off |
+
+Plain turns are absolute; press+turn is relative. Because a shifted turn moves the pot away from
+the unshifted parameter, plain control resumes only after the pot passes back through that
+parameter's position (soft takeover).
+
+Gestures are active on this algorithm's display screen. Switching to the algorithm re-syncs the
+pot positions, so nothing jumps when a pot is first touched.
+
+### Encoders
+
+The two encoders (second row) keep their standard disting NT behavior — turning them navigates
+and edits parameters as usual. Only their push buttons are overridden:
+
+| Encoder | Turn | Press |
+|---------|------|-------|
+| Left | Standard (navigate parameters/pages) | Cycle mask mode: Off → Stochastic → Burst → Off |
+| Right | Standard (edit selected parameter) | Cycle formant count: 1 → 2 → 3 → 1 |
 
 ### Buttons
 
 | Button | Action |
 |--------|--------|
-| Left encoder button | Cycle mask mode: Off → Stochastic → Burst → Off |
-| Right encoder button | Cycle formant count: 1 → 2 → 3 → 1 |
+| Button 1 / Button 2 | Standard disting NT behavior |
 | Button 3 | Cycle voice count: 1 → 2 → 3 → 4 → 1 |
 | Button 4 | Cycle chord type (14 options) |
 

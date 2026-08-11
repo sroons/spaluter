@@ -1306,8 +1306,14 @@ def build_pdf(output_path=None):
     story.append(Paragraph('Pot Mappings', styles['h3']))
     pot_data = [
         ['Pot L', 'Pulsaret morph', '0.0\u20139.0 (sweeps all 10 waveforms)'],
+        ['Pot L + press', 'Formant 1 Hz', '20\u20132000 Hz (relative)'],
+        ['Pot L press only', 'Formant 1 On/Off', 'Toggle'],
         ['Pot C', 'Window morph', '0.0\u20138.0 (sweeps all 9 windows)'],
+        ['Pot C + press', 'Formant 2 Hz', '20\u20132000 Hz (relative)'],
+        ['Pot C press only', 'Formant 2 On/Off', 'Toggle'],
         ['Pot R', 'Duty Cycle', '1\u2013100%'],
+        ['Pot R + press', 'Formant 3 Hz', '20\u20132000 Hz (relative)'],
+        ['Pot R press only', 'Formant 3 On/Off', 'Toggle'],
     ]
     story.append(make_table(
         ['Pot', 'Parameter', 'Range'],
@@ -1428,8 +1434,11 @@ def build_pdf(output_path=None):
         ['', 'Duty Mode', 'Manual / Formant', 'Manual'],
         ['Formants', 'Formant Count', '1\u20133', '2'],
         ['', 'Formant 1 Hz', '20\u20132000 Hz', '20 Hz'],
+        ['', 'Formant 1 On', 'Off / On', 'On'],
         ['', 'Formant 2 Hz', '20\u20132000 Hz', '200 Hz'],
+        ['', 'Formant 2 On', 'Off / On', 'On'],
         ['', 'Formant 3 Hz', '20\u20132000 Hz', '400 Hz'],
+        ['', 'Formant 3 On', 'Off / On', 'On'],
         ['', 'Formant Track', 'Fixed / Track', 'Fixed'],
         ['Texture', 'Mask Mode', 'Off / Stochastic / Burst', 'Off'],
         ['', 'Mask Amount', '0\u2013100%', '50%'],
@@ -1569,8 +1578,14 @@ def build_pdf(output_path=None):
     story.append(Paragraph('Pots', styles['h2']))
     pot_data = [
         ['Pot L', 'Pulsaret morph', '0.0\u20139.0 (sweeps all 10 waveforms)'],
+        ['Pot L + press', 'Formant 1 Hz', '20\u20132000 Hz (relative)'],
+        ['Pot L press only', 'Formant 1 On/Off', 'Toggle'],
         ['Pot C', 'Window morph', '0.0\u20138.0 (sweeps all 9 windows)'],
+        ['Pot C + press', 'Formant 2 Hz', '20\u20132000 Hz (relative)'],
+        ['Pot C press only', 'Formant 2 On/Off', 'Toggle'],
         ['Pot R', 'Duty Cycle', '1\u2013100%'],
+        ['Pot R + press', 'Formant 3 Hz', '20\u20132000 Hz (relative)'],
+        ['Pot R press only', 'Formant 3 On/Off', 'Toggle'],
     ]
     story.append(make_table(
         ['Pot', 'Parameter', 'Range'],
