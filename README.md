@@ -4,7 +4,7 @@ A [pulsar synthesis](https://en.wikipedia.org/wiki/Pulsar_synthesis) instrument 
 
 [![Demo video](https://img.youtube.com/vi/JfdUQbmtTNU/maxresdefault.jpg)](https://youtu.be/JfdUQbmtTNU)
 
-[![Demo video](https://img.youtube.com/vi/LO9K--yhONU/maxresdefault.jpg)](https://youtu.be/LO9K--yhONU)
+[![Demo video](https://img.youtube.com/vi/HOfKqeGnqFI/maxresdefault.jpg)](https://youtu.be/HOfKqeGnqFI)
 
 ## What Is Pulsar Synthesis?
 
