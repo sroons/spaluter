@@ -2,8 +2,6 @@
 
 A [pulsar synthesis](https://en.wikipedia.org/wiki/Pulsar_synthesis) instrument plugin for the [Expert Sleepers disting NT](https://expert-sleepers.co.uk/distingNT.html) Eurorack module.
 
-[![Demo video](https://img.youtube.com/vi/JfdUQbmtTNU/maxresdefault.jpg)](https://youtu.be/JfdUQbmtTNU)
-
 [![Demo video](https://img.youtube.com/vi/HOfKqeGnqFI/maxresdefault.jpg)](https://youtu.be/HOfKqeGnqFI)
 
 ## What Is Pulsar Synthesis?
