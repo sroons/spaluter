@@ -551,6 +551,7 @@ struct _pulsarAlgorithm : public _NT_algorithm
 	// giving three gestures — turn, press, and press+turn.
 	float potLast[3];                 // Last seen pot position (0.0–1.0)
 	float potShiftValue[3];           // Float accumulator for press+turn edits (formant Hz)
+	float potMoveAccum[3];            // Total travel since press, for press-vs-press+turn
 	bool potPressed[3];               // Pot button currently held
 	bool potMovedWhilePressed[3];     // Pot turned while held (suppresses the press action)
 	bool potTakeover[3];              // Awaiting soft takeover before plain turns resume
@@ -878,6 +879,7 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
 	{
 		alg->potLast[i] = 0.0f;
 		alg->potShiftValue[i] = 0.0f;
+		alg->potMoveAccum[i] = 0.0f;
 		alg->potPressed[i] = false;
 		alg->potMovedWhilePressed[i] = false;
 		alg->potTakeover[i] = false;
@@ -2563,6 +2565,9 @@ void customUi(_NT_algorithm* self, const _NT_uiData& data)
 	static const uint8_t  formantHzParam[3]  = { kParamFormant1Hz, kParamFormant2Hz, kParamFormant3Hz };
 	static const uint8_t  formantOnParam[3]  = { kParamFormant1On, kParamFormant2On, kParamFormant3On };
 
+	// Minimum pot travel treated as real motion rather than ADC noise
+	const float kPotDeadband = 0.0015f;
+
 	for (int i = 0; i < 3; ++i)
 	{
 		bool held     = (data.controls & potButtonBits[i]) != 0;
@@ -2575,6 +2580,7 @@ void customUi(_NT_algorithm* self, const _NT_uiData& data)
 		{
 			pThis->potPressed[i] = true;
 			pThis->potMovedWhilePressed[i] = false;
+			pThis->potMoveAccum[i] = 0.0f;
 			pThis->potLast[i] = pos;
 			pThis->potShiftValue[i] = (float)self->v[formantHzParam[i]];
 		}
@@ -2582,12 +2588,20 @@ void customUi(_NT_algorithm* self, const _NT_uiData& data)
 		if (held)
 		{
 			// Press + turn: relative edit of formant frequency (20–2000 Hz).
-			// A float accumulator preserves sub-Hz motion across callbacks.
-			if (moved)
+			//
+			// Movement is derived from the reported pot position rather than
+			// the "pot changed" bit in data.controls: the host does not reliably
+			// flag a pot as changed while its own button is held (observed on
+			// pot C), which would otherwise make press+turn dead on that pot.
+			// A small deadband rejects ADC noise, and a float accumulator
+			// preserves sub-Hz motion across callbacks.
+			float delta = pos - pThis->potLast[i];
+			if (delta >= kPotDeadband || delta <= -kPotDeadband)
 			{
-				float delta = pos - pThis->potLast[i];
 				pThis->potLast[i] = pos;
-				if (delta > 0.002f || delta < -0.002f)
+
+				pThis->potMoveAccum[i] += (delta >= 0.0f) ? delta : -delta;
+				if (pThis->potMoveAccum[i] > 0.01f)
 					pThis->potMovedWhilePressed[i] = true;
 
 				float value = pThis->potShiftValue[i] + delta * 1980.0f;
